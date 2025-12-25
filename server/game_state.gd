@@ -12,10 +12,10 @@ var last_processed_input: Dictionary = {}
 
 func add_player(player_id: String, player_name: String) -> PlayerState:
 	var player := PlayerState.new(player_id, player_name)
-	# Spawn at center of world
+	# Spawn near chunk 0,0
 	player.position = Vector2(
-		GameConstants.WORLD_WIDTH / 2.0,
-		GameConstants.WORLD_HEIGHT / 2.0
+		GameConstants.PLAYER_SPAWN_X,
+		GameConstants.PLAYER_SPAWN_Y
 	)
 	players[player_id] = player
 	last_processed_input[player_id] = 0

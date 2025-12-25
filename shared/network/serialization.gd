@@ -126,3 +126,78 @@ static func parse_player_input(data: Dictionary) -> Dictionary:
 		"aim_angle": data.get("aim_angle", 0.0),
 		"actions": data.get("actions", [])
 	}
+
+# ===== Chunk Network Messages =====
+
+# Client requests chunks around a position
+static func encode_chunk_request(world_x: int, world_y: int, radius: int = 2) -> String:
+	return encode_message(MessageTypes.CHUNK_REQUEST, {
+		"world_x": world_x,
+		"world_y": world_y,
+		"radius": radius
+	})
+
+# Client requests to modify a tile
+static func encode_tile_modify(world_x: int, world_y: int, tile_type: int) -> String:
+	return encode_message(MessageTypes.TILE_MODIFY, {
+		"world_x": world_x,
+		"world_y": world_y,
+		"tile_type": tile_type
+	})
+
+# Server sends planet info (seed, size)
+static func encode_planet_info(seed: int, size_x: int, size_y: int) -> String:
+	return encode_message(MessageTypes.PLANET_INFO, {
+		"seed": seed,
+		"size_x": size_x,
+		"size_y": size_y
+	})
+
+# Server sends full chunk data
+# Uses base64 encoding for compact tile data
+static func encode_chunk_data(chunk: Chunk) -> String:
+	# Convert tile array to bytes for compact transfer
+	var tile_bytes := PackedByteArray()
+	tile_bytes.resize(Chunk.TILE_COUNT * 4)  # 4 bytes per tile (int32)
+	for i in range(Chunk.TILE_COUNT):
+		var value: int = chunk.tiles[i]
+		tile_bytes.encode_s32(i * 4, value)
+
+	return encode_message(MessageTypes.CHUNK_DATA, {
+		"chunk_x": chunk.chunk_x,
+		"chunk_y": chunk.chunk_y,
+		"tiles": Marshalls.raw_to_base64(tile_bytes),
+		"elevation": Marshalls.raw_to_base64(chunk.elevation)
+	})
+
+# Server sends tile changes within a chunk
+static func encode_chunk_delta(chunk_x: int, chunk_y: int, changes: Dictionary) -> String:
+	# changes is a dict of "local_x,local_y" -> {type, variant, liquid}
+	return encode_message(MessageTypes.CHUNK_DELTA, {
+		"chunk_x": chunk_x,
+		"chunk_y": chunk_y,
+		"changes": changes
+	})
+
+# Parse chunk data from message
+static func parse_chunk_data(data: Dictionary) -> Dictionary:
+	var chunk_x: int = int(data.get("chunk_x", 0))
+	var chunk_y: int = int(data.get("chunk_y", 0))
+
+	# Decode tile bytes
+	var tile_bytes: PackedByteArray = Marshalls.base64_to_raw(data.get("tiles", ""))
+	var tiles := PackedInt32Array()
+	tiles.resize(Chunk.TILE_COUNT)
+	for i in range(Chunk.TILE_COUNT):
+		if i * 4 + 3 < tile_bytes.size():
+			tiles[i] = tile_bytes.decode_s32(i * 4)
+
+	# Decode elevation
+	var elevation: PackedByteArray = Marshalls.base64_to_raw(data.get("elevation", ""))
+
+	return {
+		"chunk_x": chunk_x,
+		"chunk_y": chunk_y,
+		"tiles": tiles,
+		"elevation": elevation
+	}

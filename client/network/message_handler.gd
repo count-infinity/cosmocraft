@@ -8,9 +8,13 @@ signal player_joined_received(player_data: Dictionary)
 signal player_left_received(player_id: String)
 signal pong_received(client_time: int, server_time: int)
 signal error_received(message: String)
+signal planet_info_received(seed: int, size_x: int, size_y: int)
+signal chunk_data_received(chunk_x: int, chunk_y: int, tiles: PackedInt32Array, elevation: PackedByteArray)
+signal chunk_delta_received(chunk_x: int, chunk_y: int, changes: Dictionary)
 
 func handle_message(json_string: String) -> void:
-	var message: Variant = Serialization.decode_message(json_string)
+	@warning_ignore("inference_on_variant")
+	var message := Serialization.decode_message(json_string)
 	if message == null:
 		printerr("ClientMessageHandler: Failed to decode message")
 		return
@@ -33,6 +37,12 @@ func handle_message(json_string: String) -> void:
 			_handle_pong(data)
 		MessageTypes.ERROR:
 			_handle_error(data)
+		MessageTypes.PLANET_INFO:
+			_handle_planet_info(data)
+		MessageTypes.CHUNK_DATA:
+			_handle_chunk_data(data)
+		MessageTypes.CHUNK_DELTA:
+			_handle_chunk_delta(data)
 		_:
 			printerr("ClientMessageHandler: Unknown message type '%s'" % msg_type)
 
@@ -69,3 +79,25 @@ func _handle_pong(data: Dictionary) -> void:
 func _handle_error(data: Dictionary) -> void:
 	var message: String = data.get("message", "Unknown error")
 	error_received.emit(message)
+
+func _handle_planet_info(data: Dictionary) -> void:
+	var seed_val: int = int(data.get("seed", 0))
+	var size_x: int = int(data.get("size_x", 8000))
+	var size_y: int = int(data.get("size_y", 8000))
+	planet_info_received.emit(seed_val, size_x, size_y)
+
+func _handle_chunk_data(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_chunk_data(data)
+	chunk_data_received.emit(
+		parsed.chunk_x,
+		parsed.chunk_y,
+		parsed.tiles,
+		parsed.elevation
+	)
+
+func _handle_chunk_delta(data: Dictionary) -> void:
+	var chunk_x: int = int(data.get("chunk_x", 0))
+	var chunk_y: int = int(data.get("chunk_y", 0))
+	var changes: Dictionary = data.get("changes", {})
+	chunk_delta_received.emit(chunk_x, chunk_y, changes)

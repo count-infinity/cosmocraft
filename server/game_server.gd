@@ -10,6 +10,11 @@ var config: ServerConfig
 var game_state: GameState
 var game_loop: GameLoop
 var message_handler: ServerMessageHandler
+var chunk_manager: ChunkManager
+
+# Planet configuration
+var planet_seed: int = 0
+var planet_size: Vector2i = Vector2i(8000, 8000)
 
 var _tcp_server: TCPServer
 var _peers: Dictionary = {}  # peer_id -> WebSocketPeer
@@ -24,11 +29,17 @@ func _init() -> void:
 	game_loop = GameLoop.new(game_state)
 	message_handler = ServerMessageHandler.new()
 
+	# Initialize planet with random seed
+	planet_seed = randi()
+	chunk_manager = ChunkManager.new(planet_seed, planet_size)
+
 	# Connect message handler signals
 	message_handler.player_connect_requested.connect(_on_player_connect_requested)
 	message_handler.player_input_received.connect(_on_player_input_received)
 	message_handler.player_ping_received.connect(_on_player_ping_received)
 	message_handler.player_disconnect_requested.connect(_on_player_disconnect_requested)
+	message_handler.chunk_requested.connect(_on_chunk_requested)
+	message_handler.tile_modify_requested.connect(_on_tile_modify_requested)
 
 	# Connect game loop signals
 	game_loop.tick_completed.connect(_on_tick_completed)
@@ -156,6 +167,9 @@ func _on_player_connect_requested(peer_id: int, player_name: String) -> void:
 	_send_to_peer(peer_id, Serialization.encode_connect_response(true, player_id, game_state.current_tick))
 	_send_to_peer(peer_id, Serialization.encode_game_state(game_state.current_tick, game_state.players))
 
+	# Send planet info so client can generate terrain locally
+	_send_to_peer(peer_id, Serialization.encode_planet_info(planet_seed, planet_size.x, planet_size.y))
+
 	# Notify other players
 	_broadcast_except(peer_id, Serialization.encode_player_joined(player))
 
@@ -228,3 +242,50 @@ func _generate_player_id() -> String:
 	var timestamp := Time.get_unix_time_from_system()
 	var random := randi()
 	return "%d_%d" % [int(timestamp * 1000) % 1000000, random % 10000]
+
+func _on_chunk_requested(peer_id: int, world_x: int, world_y: int, radius: int) -> void:
+	if not _peer_to_player.has(peer_id):
+		return
+
+	# Clamp radius to prevent abuse
+	radius = clampi(radius, 1, 5)
+
+	# Convert world position to chunk coordinates
+	var center_chunk := chunk_manager.world_to_chunk_coords(world_x, world_y)
+
+	# Send chunks around the requested position
+	for cy in range(center_chunk.y - radius, center_chunk.y + radius + 1):
+		for cx in range(center_chunk.x - radius, center_chunk.x + radius + 1):
+			# Skip if out of bounds
+			if cx < 0 or cy < 0:
+				continue
+			if cx >= chunk_manager.planet_size_chunks.x or cy >= chunk_manager.planet_size_chunks.y:
+				continue
+
+			var chunk := chunk_manager.get_chunk(cx, cy)
+			_send_to_peer(peer_id, Serialization.encode_chunk_data(chunk))
+
+func _on_tile_modify_requested(peer_id: int, world_x: int, world_y: int, tile_type: int) -> void:
+	if not _peer_to_player.has(peer_id):
+		return
+
+	# Validate tile type
+	if tile_type < 0 or tile_type >= TileTypes.Type.MAX:
+		return
+
+	# Apply the modification on server
+	chunk_manager.set_tile(world_x, world_y, tile_type)
+
+	# Get chunk coordinates for broadcasting
+	var chunk_coords := chunk_manager.world_to_chunk_coords(world_x, world_y)
+	var local_coords := chunk_manager.world_to_local_coords(world_x, world_y)
+
+	# Broadcast delta to all connected players
+	var changes := {
+		"%d,%d" % [local_coords.x, local_coords.y]: {
+			"type": tile_type,
+			"variant": 0,
+			"liquid": 0
+		}
+	}
+	_broadcast(Serialization.encode_chunk_delta(chunk_coords.x, chunk_coords.y, changes))

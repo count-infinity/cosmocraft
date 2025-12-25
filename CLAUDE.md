@@ -46,7 +46,7 @@ Option 2 - With GUI:
 Or from within the Godot editor: use the GUT panel at the bottom.
 
 GUT version: 9.5.1
-Current test count: 74 tests
+Current test count: 134 tests
 
 ## Project Structure
 ```
@@ -57,8 +57,13 @@ Cosmocraft/
 │   ├── network/
 │   │   ├── message_types.gd
 │   │   └── serialization.gd
-│   └── player/
-│       └── player_state.gd
+│   ├── player/
+│   │   └── player_state.gd
+│   └── world/              # Procedural world generation
+│       ├── tile_types.gd   # Tile type enum and properties
+│       ├── chunk.gd        # 32x32 tile chunk data structure
+│       ├── terrain_generator.gd  # Noise-based terrain generation
+│       └── chunk_manager.gd      # Chunk loading/unloading
 ├── server/                 # Authoritative game server (native PC)
 │   ├── main.tscn          # Server entry point
 │   ├── main.gd
@@ -74,7 +79,7 @@ Cosmocraft/
 ├── client/                 # Browser client (HTML5 export)
 │   ├── main.tscn          # Client entry point
 │   ├── main.gd
-│   ├── game_client.gd     # WebSocket client
+│   ├── game_client.gd     # WebSocket client + chunk streaming
 │   ├── config/
 │   │   └── client_config.gd
 │   ├── network/
@@ -85,7 +90,8 @@ Cosmocraft/
 │   │   ├── player_input.gd         # WASD + mouse input
 │   │   └── prediction.gd           # Client-side prediction
 │   ├── world/
-│   │   └── test_world.gd/.tscn
+│   │   ├── test_world.gd/.tscn
+│   │   └── chunk_renderer.gd       # TileMap-based chunk rendering
 │   └── ui/
 │       ├── connect_screen.gd/.tscn
 │       └── hud.gd/.tscn
@@ -95,7 +101,11 @@ Cosmocraft/
 │   ├── test_game_state.gd
 │   ├── test_game_loop.gd
 │   ├── test_physics.gd
-│   └── test_prediction.gd
+│   ├── test_prediction.gd
+│   ├── test_tile_types.gd
+│   ├── test_chunk.gd
+│   ├── test_terrain_generator.gd
+│   └── test_chunk_manager.gd
 ├── addons/gut/            # GUT testing framework
 ├── milestones/            # Development milestone docs
 └── plan.md                # Full game requirements

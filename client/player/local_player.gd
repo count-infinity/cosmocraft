@@ -23,19 +23,24 @@ func _ready() -> void:
 	_create_visuals()
 
 func _create_visuals() -> void:
+	var size := GameConstants.PLAYER_SIZE
+	var half_size := size / 2.0
+
 	# Body - blue square
 	body = ColorRect.new()
-	body.size = Vector2(32, 32)
-	body.position = Vector2(-16, -16)  # Center it
+	body.size = Vector2(size, size)
+	body.position = Vector2(-half_size, -half_size)  # Center it
 	body.color = Color(0.2, 0.4, 0.9)  # Blue
 	add_child(body)
 
-	# Aim indicator - triangle pointing in aim direction
+	# Aim indicator - triangle pointing in aim direction (scaled to player size)
+	var indicator_length := size * 0.75
+	var indicator_base := size * 0.25
 	aim_indicator = Polygon2D.new()
 	aim_indicator.polygon = PackedVector2Array([
-		Vector2(20, 0),
-		Vector2(10, -6),
-		Vector2(10, 6)
+		Vector2(indicator_length, 0),
+		Vector2(indicator_length * 0.5, -indicator_base),
+		Vector2(indicator_length * 0.5, indicator_base)
 	])
 	aim_indicator.color = Color(0.9, 0.9, 0.2)  # Yellow
 	add_child(aim_indicator)

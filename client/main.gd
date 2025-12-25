@@ -4,9 +4,11 @@ var game_client: GameClient
 var connect_screen: ConnectScreen
 var hud: HUD
 var camera: Camera2D
+var pause_menu: PauseMenu
 
 var ConnectScreenScene: PackedScene = preload("res://client/ui/connect_screen.tscn")
 var HUDScene: PackedScene = preload("res://client/ui/hud.tscn")
+var PauseMenuScene: PackedScene = preload("res://client/ui/pause_menu.tscn")
 
 func _ready() -> void:
 	print("=== Cosmocraft Client ===")
@@ -38,7 +40,7 @@ func _on_connected(_player_id: String) -> void:
 
 	# Create camera that follows local player
 	camera = Camera2D.new()
-	camera.position = Vector2(GameConstants.WORLD_WIDTH / 2, GameConstants.WORLD_HEIGHT / 2)
+	camera.position = Vector2(GameConstants.PLAYER_SPAWN_X, GameConstants.PLAYER_SPAWN_Y)
 	add_child(camera)
 	camera.make_current()
 
@@ -59,6 +61,10 @@ func _on_connection_failed(reason: String) -> void:
 	connect_screen.enable_connect()
 
 func _cleanup() -> void:
+	if pause_menu:
+		pause_menu.queue_free()
+		pause_menu = null
+
 	if hud:
 		hud.queue_free()
 		hud = null
@@ -86,3 +92,33 @@ func _notification(what: int) -> void:
 		if game_client:
 			game_client.disconnect_from_server()
 		get_tree().quit()
+
+
+func _input(event: InputEvent) -> void:
+	# Only handle ESC when connected and not already paused
+	if event.is_action_pressed("ui_cancel"):
+		if game_client and game_client.is_connected_to_server() and pause_menu == null:
+			_show_pause_menu()
+			get_viewport().set_input_as_handled()
+
+
+func _show_pause_menu() -> void:
+	pause_menu = PauseMenuScene.instantiate()
+	pause_menu.resume_requested.connect(_on_resume)
+	pause_menu.quit_requested.connect(_on_quit)
+	add_child(pause_menu)
+	get_tree().paused = true
+
+
+func _on_resume() -> void:
+	get_tree().paused = false
+	if pause_menu:
+		pause_menu.queue_free()
+		pause_menu = null
+
+
+func _on_quit() -> void:
+	get_tree().paused = false
+	if game_client:
+		game_client.disconnect_from_server()
+	get_tree().quit()
