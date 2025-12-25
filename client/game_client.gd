@@ -4,6 +4,7 @@ extends Node
 signal connected(player_id: String)
 signal disconnected()
 signal connection_failed(reason: String)
+signal chunk_manager_ready(chunk_manager: ChunkManager)
 
 var config: ClientConfig
 var message_handler: ClientMessageHandler
@@ -274,6 +275,9 @@ func _on_planet_info(seed: int, size_x: int, size_y: int) -> void:
 
 		# Move renderer below players in z-order
 		world.move_child(chunk_renderer, 0)
+
+	# Notify that chunk manager is ready (for minimap, etc.)
+	chunk_manager_ready.emit(chunk_manager)
 
 func _on_chunk_data(chunk_x: int, chunk_y: int, tiles: PackedInt32Array, elevation: PackedByteArray) -> void:
 	if chunk_manager == null:

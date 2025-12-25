@@ -21,11 +21,9 @@ func test_add_player() -> void:
 func test_add_player_spawn_position() -> void:
 	var player := game_state.add_player("p1", "TestPlayer")
 
-	# Should spawn at center of world
-	var expected_x := GameConstants.WORLD_WIDTH / 2.0
-	var expected_y := GameConstants.WORLD_HEIGHT / 2.0
-	assert_eq(player.position.x, expected_x, "Should spawn at center X")
-	assert_eq(player.position.y, expected_y, "Should spawn at center Y")
+	# Should spawn at chunk 0,0 area
+	assert_eq(player.position.x, GameConstants.PLAYER_SPAWN_X, "Should spawn at configured X")
+	assert_eq(player.position.y, GameConstants.PLAYER_SPAWN_Y, "Should spawn at configured Y")
 
 func test_remove_player() -> void:
 	game_state.add_player("p1", "TestPlayer")

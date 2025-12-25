@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://minimap"]
+
+[ext_resource type="Script" path="res://client/ui/minimap.gd" id="1_minimap"]
+
+[node name="Minimap" type="Control"]
+script = ExtResource("1_minimap")

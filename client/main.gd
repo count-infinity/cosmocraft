@@ -20,6 +20,7 @@ func _ready() -> void:
 	game_client.connected.connect(_on_connected)
 	game_client.disconnected.connect(_on_disconnected)
 	game_client.connection_failed.connect(_on_connection_failed)
+	game_client.chunk_manager_ready.connect(_on_chunk_manager_ready)
 
 	# Show connect screen
 	_show_connect_screen()
@@ -122,3 +123,8 @@ func _on_quit() -> void:
 	if game_client:
 		game_client.disconnect_from_server()
 	get_tree().quit()
+
+
+func _on_chunk_manager_ready(chunk_manager: ChunkManager) -> void:
+	if hud:
+		hud.initialize_minimap(chunk_manager)
