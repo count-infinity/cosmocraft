@@ -12,6 +12,14 @@ signal planet_info_received(seed: int, size_x: int, size_y: int)
 signal chunk_data_received(chunk_x: int, chunk_y: int, tiles: PackedInt32Array, elevation: PackedByteArray)
 signal chunk_delta_received(chunk_x: int, chunk_y: int, changes: Dictionary)
 
+# Inventory signals
+signal inventory_sync_received(player_id: String, inventory_data: Dictionary, equipment_data: Dictionary, hotbar_data: Dictionary, stats_data: Dictionary)
+signal inventory_update_received(player_id: String, changes: Dictionary)
+signal equipment_update_received(player_id: String, slot: int, item_data: Variant)
+signal stats_update_received(player_id: String, stats: Dictionary)
+signal item_pickup_response_received(success: bool, item_id: String, stack_data: Variant, error: String)
+signal item_drop_response_received(success: bool, slot: int, world_item_id: String, error: String)
+
 func handle_message(json_string: String) -> void:
 	@warning_ignore("inference_on_variant")
 	var message := Serialization.decode_message(json_string)
@@ -43,6 +51,19 @@ func handle_message(json_string: String) -> void:
 			_handle_chunk_data(data)
 		MessageTypes.CHUNK_DELTA:
 			_handle_chunk_delta(data)
+		# Inventory messages
+		MessageTypes.INVENTORY_SYNC:
+			_handle_inventory_sync(data)
+		MessageTypes.INVENTORY_UPDATE:
+			_handle_inventory_update(data)
+		MessageTypes.EQUIPMENT_UPDATE:
+			_handle_equipment_update(data)
+		MessageTypes.STATS_UPDATE:
+			_handle_stats_update(data)
+		MessageTypes.ITEM_PICKUP_RESPONSE:
+			_handle_item_pickup_response(data)
+		MessageTypes.ITEM_DROP_RESPONSE:
+			_handle_item_drop_response(data)
 		_:
 			printerr("ClientMessageHandler: Unknown message type '%s'" % msg_type)
 
@@ -101,3 +122,53 @@ func _handle_chunk_delta(data: Dictionary) -> void:
 	var chunk_y: int = int(data.get("chunk_y", 0))
 	var changes: Dictionary = data.get("changes", {})
 	chunk_delta_received.emit(chunk_x, chunk_y, changes)
+
+
+# =============================================================================
+# Inventory message handlers
+# =============================================================================
+
+func _handle_inventory_sync(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_inventory_sync(data)
+	inventory_sync_received.emit(
+		parsed.player_id,
+		parsed.inventory,
+		parsed.equipment,
+		parsed.hotbar,
+		parsed.stats
+	)
+
+
+func _handle_inventory_update(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_inventory_update(data)
+	inventory_update_received.emit(parsed.player_id, parsed.changes)
+
+
+func _handle_equipment_update(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_equipment_update(data)
+	equipment_update_received.emit(parsed.player_id, parsed.slot, parsed.item)
+
+
+func _handle_stats_update(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_stats_update(data)
+	stats_update_received.emit(parsed.player_id, parsed.stats)
+
+
+func _handle_item_pickup_response(data: Dictionary) -> void:
+	var success: bool = data.get("success", false)
+	var item_id: String = data.get("item_id", "")
+	var stack_data: Variant = data.get("stack")
+	var error: String = data.get("error", "")
+	item_pickup_response_received.emit(success, item_id, stack_data, error)
+
+
+func _handle_item_drop_response(data: Dictionary) -> void:
+	var success: bool = data.get("success", false)
+	var slot: int = int(data.get("slot", 0))
+	var world_item_id: String = data.get("world_item_id", "")
+	var error: String = data.get("error", "")
+	item_drop_response_received.emit(success, slot, world_item_id, error)

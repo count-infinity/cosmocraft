@@ -201,3 +201,193 @@ static func parse_chunk_data(data: Dictionary) -> Dictionary:
 		"tiles": tiles,
 		"elevation": elevation
 	}
+
+
+# ===== Inventory Network Messages =====
+
+# Encode a full inventory sync message (sent on player join)
+static func encode_inventory_sync(
+	player_id: String,
+	inventory: Dictionary,
+	equipment: Dictionary,
+	hotbar: Dictionary,
+	stats: Dictionary = {}
+) -> String:
+	return encode_message(MessageTypes.INVENTORY_SYNC, {
+		"player_id": player_id,
+		"inventory": inventory,
+		"equipment": equipment,
+		"hotbar": hotbar,
+		"stats": stats
+	})
+
+
+# Encode an inventory update message (delta changes)
+static func encode_inventory_update(player_id: String, changes: Dictionary) -> String:
+	# changes format: {"action": "add|remove|update", "slot": int, "stack": stack_data}
+	return encode_message(MessageTypes.INVENTORY_UPDATE, {
+		"player_id": player_id,
+		"changes": changes
+	})
+
+
+# Encode an equipment update message
+static func encode_equipment_update(player_id: String, slot: int, item_data: Variant) -> String:
+	# item_data is Dictionary for equipped item or null for unequipped
+	return encode_message(MessageTypes.EQUIPMENT_UPDATE, {
+		"player_id": player_id,
+		"slot": slot,
+		"item": item_data
+	})
+
+
+# Encode an item pickup request (client -> server)
+static func encode_item_pickup_request(world_item_id: String, world_position: Vector2) -> String:
+	return encode_message(MessageTypes.ITEM_PICKUP_REQUEST, {
+		"item_id": world_item_id,
+		"position": {"x": world_position.x, "y": world_position.y}
+	})
+
+
+# Encode an item pickup response (server -> client)
+static func encode_item_pickup_response(
+	success: bool,
+	world_item_id: String,
+	stack_data: Variant = null,
+	error_message: String = ""
+) -> String:
+	return encode_message(MessageTypes.ITEM_PICKUP_RESPONSE, {
+		"success": success,
+		"item_id": world_item_id,
+		"stack": stack_data,
+		"error": error_message
+	})
+
+
+# Encode an item drop request (client -> server)
+static func encode_item_drop_request(inventory_slot: int, count: int = 1) -> String:
+	return encode_message(MessageTypes.ITEM_DROP_REQUEST, {
+		"slot": inventory_slot,
+		"count": count
+	})
+
+
+# Encode an item drop response (server -> client)
+static func encode_item_drop_response(
+	success: bool,
+	inventory_slot: int,
+	world_item_id: String = "",
+	error_message: String = ""
+) -> String:
+	return encode_message(MessageTypes.ITEM_DROP_RESPONSE, {
+		"success": success,
+		"slot": inventory_slot,
+		"world_item_id": world_item_id,
+		"error": error_message
+	})
+
+
+# Encode an item use request (client -> server)
+static func encode_item_use_request(inventory_slot: int) -> String:
+	return encode_message(MessageTypes.ITEM_USE_REQUEST, {
+		"slot": inventory_slot
+	})
+
+
+# Encode an equip request (client -> server)
+static func encode_equip_request(inventory_slot: int, equip_slot: int = -1) -> String:
+	# equip_slot of -1 means auto-detect from item definition
+	return encode_message(MessageTypes.EQUIP_REQUEST, {
+		"inventory_slot": inventory_slot,
+		"equip_slot": equip_slot
+	})
+
+
+# Encode an unequip request (client -> server)
+static func encode_unequip_request(equip_slot: int) -> String:
+	return encode_message(MessageTypes.UNEQUIP_REQUEST, {
+		"equip_slot": equip_slot
+	})
+
+
+# Encode a stats update message (server -> client)
+static func encode_stats_update(player_id: String, stats: Dictionary) -> String:
+	return encode_message(MessageTypes.STATS_UPDATE, {
+		"player_id": player_id,
+		"stats": stats
+	})
+
+
+# Parse an inventory sync message
+static func parse_inventory_sync(data: Dictionary) -> Dictionary:
+	return {
+		"player_id": data.get("player_id", ""),
+		"inventory": data.get("inventory", {}),
+		"equipment": data.get("equipment", {}),
+		"hotbar": data.get("hotbar", {}),
+		"stats": data.get("stats", {})
+	}
+
+
+# Parse an inventory update message
+static func parse_inventory_update(data: Dictionary) -> Dictionary:
+	return {
+		"player_id": data.get("player_id", ""),
+		"changes": data.get("changes", {})
+	}
+
+
+# Parse an equipment update message
+static func parse_equipment_update(data: Dictionary) -> Dictionary:
+	return {
+		"player_id": data.get("player_id", ""),
+		"slot": data.get("slot", 0),
+		"item": data.get("item")  # Can be null
+	}
+
+
+# Parse a stats update message
+static func parse_stats_update(data: Dictionary) -> Dictionary:
+	return {
+		"player_id": data.get("player_id", ""),
+		"stats": data.get("stats", {})
+	}
+
+
+# Parse an item pickup request
+static func parse_item_pickup_request(data: Dictionary) -> Dictionary:
+	var pos_data = data.get("position", {})
+	return {
+		"item_id": data.get("item_id", ""),
+		"position": Vector2(pos_data.get("x", 0.0), pos_data.get("y", 0.0))
+	}
+
+
+# Parse an item drop request
+static func parse_item_drop_request(data: Dictionary) -> Dictionary:
+	return {
+		"slot": data.get("slot", 0),
+		"count": data.get("count", 1)
+	}
+
+
+# Parse an equip request
+static func parse_equip_request(data: Dictionary) -> Dictionary:
+	return {
+		"inventory_slot": data.get("inventory_slot", 0),
+		"equip_slot": data.get("equip_slot", -1)
+	}
+
+
+# Parse an unequip request
+static func parse_unequip_request(data: Dictionary) -> Dictionary:
+	return {
+		"equip_slot": data.get("equip_slot", 0)
+	}
+
+
+# Parse an item use request
+static func parse_item_use_request(data: Dictionary) -> Dictionary:
+	return {
+		"slot": data.get("slot", 0)
+	}

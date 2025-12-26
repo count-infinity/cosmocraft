@@ -1,10 +1,18 @@
 class_name GameClient
 extends Node
 
+const ClientRegistriesClass = preload("res://client/data/client_registries.gd")
+
 signal connected(player_id: String)
 signal disconnected()
 signal connection_failed(reason: String)
 signal chunk_manager_ready(chunk_manager: ChunkManager)
+
+# Inventory signals (forwarded from message handler for UI)
+signal inventory_changed
+signal equipment_changed(slot: int)
+signal hotbar_changed
+signal stats_changed
 
 var config: ClientConfig
 var message_handler: ClientMessageHandler
@@ -26,6 +34,13 @@ var _last_chunk_request_pos: Vector2i = Vector2i(-9999, -9999)
 var _chunk_request_interval: float = 0.5
 var _chunk_request_timer: float = 0.0
 
+# Inventory system
+var client_registries: ClientRegistriesClass
+var local_inventory: Inventory
+var local_equipment: EquipmentSlots
+var local_hotbar: Hotbar
+var local_stats: PlayerStats
+
 # Preloaded scenes
 var LocalPlayerScene: PackedScene = preload("res://client/player/local_player.tscn")
 var RemotePlayerScene: PackedScene = preload("res://client/player/remote_player.tscn")
@@ -34,6 +49,9 @@ var TestWorldScene: PackedScene = preload("res://client/world/test_world.tscn")
 func _init() -> void:
 	config = ClientConfig.new()
 	message_handler = ClientMessageHandler.new()
+
+	# Initialize client registries
+	client_registries = ClientRegistriesClass.new()
 
 	# Connect message handler signals
 	message_handler.connect_response_received.connect(_on_connect_response)
@@ -46,6 +64,12 @@ func _init() -> void:
 	message_handler.planet_info_received.connect(_on_planet_info)
 	message_handler.chunk_data_received.connect(_on_chunk_data)
 	message_handler.chunk_delta_received.connect(_on_chunk_delta)
+
+	# Connect inventory message handler signals
+	message_handler.inventory_sync_received.connect(_on_inventory_sync)
+	message_handler.inventory_update_received.connect(_on_inventory_update)
+	message_handler.equipment_update_received.connect(_on_equipment_update)
+	message_handler.stats_update_received.connect(_on_stats_update)
 
 func connect_to_server(address: String, port: int, player_name: String) -> void:
 	config.server_address = address
@@ -155,6 +179,12 @@ func _cleanup() -> void:
 	if world:
 		world.queue_free()
 		world = null
+
+	# Clean up inventory state
+	local_inventory = null
+	local_equipment = null
+	local_hotbar = null
+	local_stats = null
 
 	_ws = null
 
@@ -322,3 +352,162 @@ func request_tile_modify(world_x: int, world_y: int, tile_type: int) -> void:
 		return
 
 	_send(Serialization.encode_tile_modify(world_x, world_y, tile_type))
+
+
+# =============================================================================
+# Inventory message handlers
+# =============================================================================
+
+func _on_inventory_sync(
+	player_id: String,
+	inventory_data: Dictionary,
+	equipment_data: Dictionary,
+	hotbar_data: Dictionary,
+	stats_data: Dictionary
+) -> void:
+	# Only process our own inventory
+	if player_id != _player_id:
+		return
+
+	print("GameClient: Received inventory sync")
+
+	# Initialize local inventory from server data
+	var item_registry := client_registries.item_registry
+
+	# Create and populate inventory
+	local_inventory = Inventory.new(100.0, item_registry)
+	local_inventory.from_dict(inventory_data)
+
+	# Create and populate equipment
+	local_equipment = EquipmentSlots.new(item_registry)
+	local_equipment.from_dict(equipment_data)
+
+	# Create and populate hotbar
+	local_hotbar = Hotbar.new(local_inventory, item_registry)
+	local_hotbar.from_dict(hotbar_data)
+	local_hotbar.link_to_inventory(local_inventory)
+
+	# Create stats object
+	local_stats = PlayerStats.new(local_equipment)
+
+	# Emit signals to update UI
+	inventory_changed.emit()
+	equipment_changed.emit(-1)  # -1 indicates full refresh
+	hotbar_changed.emit()
+	stats_changed.emit()
+
+	print("GameClient: Inventory initialized - %d stacks, weight: %.1f/%.1f" % [
+		local_inventory.get_stack_count(),
+		local_inventory.get_current_weight(),
+		local_inventory.max_weight
+	])
+
+
+func _on_inventory_update(player_id: String, changes: Dictionary) -> void:
+	if player_id != _player_id or local_inventory == null:
+		return
+
+	# Apply delta changes to local inventory
+	var action: String = changes.get("action", "")
+	var slot: int = changes.get("slot", -1)
+	var stack_data: Dictionary = changes.get("stack", {})
+
+	match action:
+		"add":
+			if not stack_data.is_empty():
+				var stack := ItemStack.from_dict(stack_data, client_registries.item_registry)
+				if stack != null and not stack.is_empty():
+					local_inventory.add_stack(stack)
+		"remove":
+			if slot >= 0 and slot < local_inventory.get_stack_count():
+				var stack := local_inventory.get_stack_at(slot)
+				if stack != null:
+					local_inventory.remove_stack(stack)
+		"update":
+			# Full slot update - replace the stack at this slot
+			if slot >= 0 and slot < local_inventory.get_stack_count():
+				# For now, we rebuild from full sync
+				pass
+
+	# Update hotbar references
+	if local_hotbar != null:
+		local_hotbar.validate(local_inventory)
+
+	inventory_changed.emit()
+	hotbar_changed.emit()
+
+
+func _on_equipment_update(player_id: String, slot: int, item_data: Variant) -> void:
+	if player_id != _player_id or local_equipment == null:
+		return
+
+	var slot_enum := slot as ItemEnums.EquipSlot
+
+	if item_data == null:
+		# Unequip
+		local_equipment.unequip(slot_enum)
+	else:
+		# Equip new item
+		if item_data is Dictionary:
+			var item := ItemInstance.from_dict(item_data, client_registries.item_registry)
+			if item != null:
+				local_equipment.equip(item)
+
+	equipment_changed.emit(slot)
+	stats_changed.emit()
+
+
+func _on_stats_update(player_id: String, stats: Dictionary) -> void:
+	if player_id != _player_id:
+		return
+
+	# Stats are automatically calculated from equipment
+	# This signal is mainly for when server overrides or modifies stats
+	if local_stats != null:
+		local_stats.recalculate()
+
+	stats_changed.emit()
+
+
+# =============================================================================
+# Inventory request functions (client -> server)
+# =============================================================================
+
+## Request to equip an item from inventory
+func request_equip(inventory_slot: int, equip_slot: int = -1) -> void:
+	if not is_connected_to_server():
+		return
+
+	_send(Serialization.encode_equip_request(inventory_slot, equip_slot))
+
+
+## Request to unequip an item to inventory
+func request_unequip(equip_slot: int) -> void:
+	if not is_connected_to_server():
+		return
+
+	_send(Serialization.encode_unequip_request(equip_slot))
+
+
+## Request to drop an item from inventory
+func request_drop_item(inventory_slot: int, count: int = 1) -> void:
+	if not is_connected_to_server():
+		return
+
+	_send(Serialization.encode_item_drop_request(inventory_slot, count))
+
+
+## Request to use an item from inventory (consumables)
+func request_use_item(inventory_slot: int) -> void:
+	if not is_connected_to_server():
+		return
+
+	_send(Serialization.encode_item_use_request(inventory_slot))
+
+
+## Request to pick up a world item
+func request_pickup_item(world_item_id: String, position: Vector2) -> void:
+	if not is_connected_to_server():
+		return
+
+	_send(Serialization.encode_item_pickup_request(world_item_id, position))

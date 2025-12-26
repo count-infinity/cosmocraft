@@ -186,3 +186,129 @@ func test_roundtrip_serialization() -> void:
 	assert_almost_eq(restored.velocity.x, original.velocity.x, 0.001, "Velocity X should survive roundtrip")
 	assert_almost_eq(restored.velocity.y, original.velocity.y, 0.001, "Velocity Y should survive roundtrip")
 	assert_almost_eq(restored.aim_angle, original.aim_angle, 0.00001, "Aim angle should survive roundtrip")
+
+
+# ===== Inventory Integration Tests =====
+
+func test_inventory_fields_default_to_empty() -> void:
+	var player := PlayerState.new("p1", "Test")
+
+	assert_eq(player.inventory, {}, "Inventory should default to empty dict")
+	assert_eq(player.equipment, {}, "Equipment should default to empty dict")
+	assert_eq(player.hotbar, {}, "Hotbar should default to empty dict")
+	assert_eq(player.stats, {}, "Stats should default to empty dict")
+	assert_eq(player.skills, {}, "Skills should default to empty dict")
+
+
+func test_to_dict_includes_inventory_fields() -> void:
+	var player := PlayerState.new("p1", "Test")
+	player.inventory = {"max_weight": 100.0, "stacks": []}
+	player.equipment = {"5": {"definition_id": "basic_sword"}}
+	player.hotbar = {"selected": 0, "slots": []}
+	player.stats = {"strength": 10}
+	player.skills = {"mining": {"level": 1, "xp": 0}}
+
+	var dict := player.to_dict()
+
+	assert_eq(dict["inventory"], player.inventory, "Inventory should be in dict")
+	assert_eq(dict["equipment"], player.equipment, "Equipment should be in dict")
+	assert_eq(dict["hotbar"], player.hotbar, "Hotbar should be in dict")
+	assert_eq(dict["stats"], player.stats, "Stats should be in dict")
+	assert_eq(dict["skills"], player.skills, "Skills should be in dict")
+
+
+func test_from_dict_loads_inventory_fields() -> void:
+	var dict := {
+		"id": "p1",
+		"name": "Test",
+		"position": {"x": 0.0, "y": 0.0},
+		"velocity": {"x": 0.0, "y": 0.0},
+		"aim_angle": 0.0,
+		"inventory": {"max_weight": 150.0, "stacks": [{"item": {"definition_id": "stone"}, "count": 10}]},
+		"equipment": {"4": {"definition_id": "basic_pickaxe"}},
+		"hotbar": {"selected": 2, "slots": []},
+		"stats": {"fortitude": 5},
+		"skills": {"smithing": {"level": 3, "xp": 500}}
+	}
+
+	var player := PlayerState.from_dict(dict)
+
+	assert_eq(player.inventory, dict["inventory"], "Inventory should load from dict")
+	assert_eq(player.equipment, dict["equipment"], "Equipment should load from dict")
+	assert_eq(player.hotbar, dict["hotbar"], "Hotbar should load from dict")
+	assert_eq(player.stats, dict["stats"], "Stats should load from dict")
+	assert_eq(player.skills, dict["skills"], "Skills should load from dict")
+
+
+func test_from_dict_backwards_compatible() -> void:
+	# Old format without inventory fields should work
+	var dict := {
+		"id": "p1",
+		"name": "OldPlayer",
+		"position": {"x": 100.0, "y": 200.0},
+		"velocity": {"x": 0.0, "y": 0.0},
+		"aim_angle": 1.5
+	}
+
+	var player := PlayerState.from_dict(dict)
+
+	assert_eq(player.id, "p1", "ID should load")
+	assert_eq(player.name, "OldPlayer", "Name should load")
+	assert_eq(player.inventory, {}, "Missing inventory should default to empty")
+	assert_eq(player.equipment, {}, "Missing equipment should default to empty")
+	assert_eq(player.hotbar, {}, "Missing hotbar should default to empty")
+	assert_eq(player.stats, {}, "Missing stats should default to empty")
+	assert_eq(player.skills, {}, "Missing skills should default to empty")
+
+
+func test_clone_deep_copies_inventory_fields() -> void:
+	var original := PlayerState.new("p1", "Test")
+	original.inventory = {"max_weight": 100.0, "stacks": [{"count": 5}]}
+	original.equipment = {"5": {"id": "sword"}}
+	original.stats = {"strength": 10}
+
+	var cloned := original.clone()
+
+	# Values should match
+	assert_eq(cloned.inventory, original.inventory, "Inventory should match")
+	assert_eq(cloned.equipment, original.equipment, "Equipment should match")
+	assert_eq(cloned.stats, original.stats, "Stats should match")
+
+	# Should be deep copies (independent)
+	cloned.inventory["max_weight"] = 999.0
+	cloned.equipment["5"]["id"] = "axe"
+	cloned.stats["strength"] = 99
+
+	assert_eq(original.inventory["max_weight"], 100.0, "Original inventory should be unchanged")
+	assert_eq(original.equipment["5"]["id"], "sword", "Original equipment should be unchanged")
+	assert_eq(original.stats["strength"], 10, "Original stats should be unchanged")
+
+
+func test_roundtrip_serialization_with_inventory() -> void:
+	var original := PlayerState.new("p1", "FullPlayer")
+	original.position = Vector2(100, 200)
+	original.inventory = {
+		"max_weight": 120.0,
+		"stacks": [
+			{"item": {"definition_id": "basic_pickaxe", "durability": 50}, "count": 1},
+			{"item": {"definition_id": "stone"}, "count": 64}
+		]
+	}
+	original.equipment = {
+		"5": {"definition_id": "basic_sword", "durability": 100}
+	}
+	original.hotbar = {
+		"selected": 0,
+		"slots": [{"slot": 0, "stack": {"item": {"definition_id": "stone"}, "count": 64}}]
+	}
+	original.stats = {"strength": 15, "precision": 8}
+	original.skills = {"mining": {"level": 5, "xp": 2500}, "combat": {"level": 2, "xp": 100}}
+
+	var dict := original.to_dict()
+	var restored := PlayerState.from_dict(dict)
+
+	assert_eq(restored.inventory, original.inventory, "Inventory should survive roundtrip")
+	assert_eq(restored.equipment, original.equipment, "Equipment should survive roundtrip")
+	assert_eq(restored.hotbar, original.hotbar, "Hotbar should survive roundtrip")
+	assert_eq(restored.stats, original.stats, "Stats should survive roundtrip")
+	assert_eq(restored.skills, original.skills, "Skills should survive roundtrip")

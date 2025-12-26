@@ -8,6 +8,12 @@ signal player_disconnect_requested(peer_id: int)
 signal chunk_requested(peer_id: int, world_x: int, world_y: int, radius: int)
 signal tile_modify_requested(peer_id: int, world_x: int, world_y: int, tile_type: int)
 
+# Inventory signals
+signal equip_requested(peer_id: int, inventory_slot: int, equip_slot: int)
+signal unequip_requested(peer_id: int, equip_slot: int)
+signal item_drop_requested(peer_id: int, slot: int, count: int)
+signal item_use_requested(peer_id: int, slot: int)
+
 # Process an incoming message from a client
 func handle_message(peer_id: int, json_string: String) -> void:
 	@warning_ignore("inference_on_variant")
@@ -32,6 +38,15 @@ func handle_message(peer_id: int, json_string: String) -> void:
 			_handle_chunk_request(peer_id, data)
 		MessageTypes.TILE_MODIFY:
 			_handle_tile_modify(peer_id, data)
+		# Inventory messages
+		MessageTypes.EQUIP_REQUEST:
+			_handle_equip_request(peer_id, data)
+		MessageTypes.UNEQUIP_REQUEST:
+			_handle_unequip_request(peer_id, data)
+		MessageTypes.ITEM_DROP_REQUEST:
+			_handle_item_drop_request(peer_id, data)
+		MessageTypes.ITEM_USE_REQUEST:
+			_handle_item_use_request(peer_id, data)
 		_:
 			printerr("ServerMessageHandler: Unknown message type '%s' from peer %d" % [msg_type, peer_id])
 
@@ -62,3 +77,35 @@ func _handle_tile_modify(peer_id: int, data: Dictionary) -> void:
 	var world_y: int = int(data.get("world_y", 0))
 	var tile_type: int = int(data.get("tile_type", 0))
 	tile_modify_requested.emit(peer_id, world_x, world_y, tile_type)
+
+
+# ===== Inventory Message Handlers =====
+
+func _handle_equip_request(peer_id: int, data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_equip_request(data)
+	var inventory_slot: int = parsed["inventory_slot"]
+	var equip_slot: int = parsed["equip_slot"]
+	equip_requested.emit(peer_id, inventory_slot, equip_slot)
+
+
+func _handle_unequip_request(peer_id: int, data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_unequip_request(data)
+	var equip_slot: int = parsed["equip_slot"]
+	unequip_requested.emit(peer_id, equip_slot)
+
+
+func _handle_item_drop_request(peer_id: int, data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_item_drop_request(data)
+	var slot: int = parsed["slot"]
+	var count: int = parsed["count"]
+	item_drop_requested.emit(peer_id, slot, count)
+
+
+func _handle_item_use_request(peer_id: int, data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_item_use_request(data)
+	var slot: int = parsed["slot"]
+	item_use_requested.emit(peer_id, slot)

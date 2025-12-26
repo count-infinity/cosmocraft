@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://equipment_panel"]
+
+[ext_resource type="Script" path="res://client/ui/equipment_panel.gd" id="1_panel"]
+
+[node name="EquipmentPanel" type="PanelContainer"]
+script = ExtResource("1_panel")

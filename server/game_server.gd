@@ -1,6 +1,8 @@
 class_name GameServer
 extends Node
 
+const ServerRegistriesScript = preload("res://server/data/server_registries.gd")
+
 signal server_started(port: int)
 signal server_stopped()
 signal player_connected(player_id: String, player_name: String)
@@ -15,6 +17,12 @@ var chunk_manager: ChunkManager
 # Planet configuration
 var planet_seed: int = 0
 var planet_size: Vector2i = Vector2i(8000, 8000)
+
+# Inventory system
+var registries  # ServerRegistries type, loaded via preload
+var _player_inventories: Dictionary = {}  # player_id -> Inventory
+var _player_equipment: Dictionary = {}  # player_id -> EquipmentSlots
+var _player_hotbars: Dictionary = {}  # player_id -> Hotbar
 
 var _tcp_server: TCPServer
 var _peers: Dictionary = {}  # peer_id -> WebSocketPeer
@@ -33,6 +41,9 @@ func _init() -> void:
 	planet_seed = randi()
 	chunk_manager = ChunkManager.new(planet_seed, planet_size)
 
+	# Initialize inventory registries
+	registries = ServerRegistriesScript.new()
+
 	# Connect message handler signals
 	message_handler.player_connect_requested.connect(_on_player_connect_requested)
 	message_handler.player_input_received.connect(_on_player_input_received)
@@ -40,6 +51,12 @@ func _init() -> void:
 	message_handler.player_disconnect_requested.connect(_on_player_disconnect_requested)
 	message_handler.chunk_requested.connect(_on_chunk_requested)
 	message_handler.tile_modify_requested.connect(_on_tile_modify_requested)
+
+	# Connect inventory message handler signals
+	message_handler.equip_requested.connect(_on_equip_requested)
+	message_handler.unequip_requested.connect(_on_unequip_requested)
+	message_handler.item_drop_requested.connect(_on_item_drop_requested)
+	message_handler.item_use_requested.connect(_on_item_use_requested)
 
 	# Connect game loop signals
 	game_loop.tick_completed.connect(_on_tick_completed)
@@ -95,6 +112,10 @@ func _accept_new_connections() -> void:
 		var tcp_peer := _tcp_server.take_connection()
 		if tcp_peer:
 			var ws_peer := WebSocketPeer.new()
+			# Increase buffer sizes for large chunk data transfers
+			# Default is 65535 (64KB), increase to 16MB for chunk streaming
+			ws_peer.outbound_buffer_size = 16 * 1024 * 1024
+			ws_peer.inbound_buffer_size = 1 * 1024 * 1024
 			var error := ws_peer.accept_stream(tcp_peer)
 			if error == OK:
 				var peer_id := tcp_peer.get_instance_id()
@@ -159,6 +180,9 @@ func _on_player_connect_requested(peer_id: int, player_name: String) -> void:
 	# Add player to game state
 	var player := game_state.add_player(player_id, player_name)
 
+	# Initialize player inventory with starter items
+	_initialize_player_inventory(player_id, player)
+
 	# Map peer to player
 	_peer_to_player[peer_id] = player_id
 	_player_to_peer[player_id] = peer_id
@@ -170,10 +194,20 @@ func _on_player_connect_requested(peer_id: int, player_name: String) -> void:
 	# Send planet info so client can generate terrain locally
 	_send_to_peer(peer_id, Serialization.encode_planet_info(planet_seed, planet_size.x, planet_size.y))
 
+	# Send full inventory sync
+	_send_to_peer(peer_id, Serialization.encode_inventory_sync(
+		player_id,
+		player.inventory,
+		player.equipment,
+		player.hotbar,
+		player.stats
+	))
+
 	# Notify other players
 	_broadcast_except(peer_id, Serialization.encode_player_joined(player))
 
 	print("GameServer: Player '%s' (ID: %s) connected from peer %d" % [player_name, player_id, peer_id])
+	print("GameServer: Player '%s' received starter inventory" % player_name)
 	player_connected.emit(player_id, player_name)
 
 func _on_player_input_received(peer_id: int, input_data: Dictionary) -> void:
@@ -211,6 +245,11 @@ func _remove_player(player_id: String) -> void:
 		return
 
 	game_state.remove_player(player_id)
+
+	# Clean up inventory data
+	_player_inventories.erase(player_id)
+	_player_equipment.erase(player_id)
+	_player_hotbars.erase(player_id)
 
 	var peer_id: int = _player_to_peer.get(player_id, -1)
 	if peer_id >= 0:
@@ -289,3 +328,247 @@ func _on_tile_modify_requested(peer_id: int, world_x: int, world_y: int, tile_ty
 		}
 	}
 	_broadcast(Serialization.encode_chunk_delta(chunk_coords.x, chunk_coords.y, changes))
+
+
+# ===== Inventory System =====
+
+## Initialize a new player's inventory with starter items
+func _initialize_player_inventory(player_id: String, player: PlayerState) -> void:
+	# Create starter loadout using registries
+	var loadout: Dictionary = registries.create_starter_loadout()
+
+	var inventory: Inventory = loadout["inventory"]
+	var equipment: EquipmentSlots = loadout["equipment"]
+	var hotbar: Hotbar = loadout["hotbar"]
+
+	# Store live objects
+	_player_inventories[player_id] = inventory
+	_player_equipment[player_id] = equipment
+	_player_hotbars[player_id] = hotbar
+
+	# Serialize to PlayerState for network sync
+	player.inventory = inventory.to_dict()
+	player.equipment = equipment.to_dict()
+	player.hotbar = hotbar.to_dict()
+	player.stats = registries.calculate_player_stats(equipment)
+
+	print("GameServer: Initialized inventory for player %s:" % player_id)
+	print("  - Inventory: %d stacks, %.1f/%.1f weight" % [
+		inventory.get_stack_count(),
+		inventory.get_current_weight(),
+		inventory.max_weight
+	])
+	print("  - Equipment: %d items equipped" % equipment.get_all_equipped().size())
+
+
+## Sync player's inventory state to PlayerState for network
+func _sync_player_inventory_to_state(player_id: String) -> void:
+	var player := game_state.get_player(player_id)
+	if player == null:
+		return
+
+	if _player_inventories.has(player_id):
+		player.inventory = _player_inventories[player_id].to_dict()
+	if _player_equipment.has(player_id):
+		player.equipment = _player_equipment[player_id].to_dict()
+		player.stats = registries.calculate_player_stats(_player_equipment[player_id])
+	if _player_hotbars.has(player_id):
+		player.hotbar = _player_hotbars[player_id].to_dict()
+
+
+## Handle equip request from client
+func _on_equip_requested(peer_id: int, inventory_slot: int, equip_slot: int) -> void:
+	if not _peer_to_player.has(peer_id):
+		return
+
+	var player_id: String = _peer_to_player[peer_id]
+
+	if not _player_inventories.has(player_id) or not _player_equipment.has(player_id):
+		return
+
+	var inventory: Inventory = _player_inventories[player_id]
+	var equipment: EquipmentSlots = _player_equipment[player_id]
+
+	# Get the stack at the inventory slot
+	var stack := inventory.get_stack_at(inventory_slot)
+	if stack == null or stack.is_empty():
+		_send_to_peer(peer_id, Serialization.encode_error("No item in that slot"))
+		return
+
+	var item := stack.item
+	if item == null or item.definition == null:
+		_send_to_peer(peer_id, Serialization.encode_error("Invalid item"))
+		return
+
+	# Check if item is equippable
+	if not item.definition.is_equippable():
+		_send_to_peer(peer_id, Serialization.encode_error("Item cannot be equipped"))
+		return
+
+	# Equip the item (returns previously equipped item)
+	var previous := equipment.equip(item)
+
+	# Remove item from inventory
+	inventory.remove_stack(stack)
+
+	# If there was a previously equipped item, add it back to inventory
+	if previous != null:
+		var prev_stack := ItemStack.new(previous, 1)
+		inventory.add_stack(prev_stack)
+
+	# Sync to PlayerState
+	_sync_player_inventory_to_state(player_id)
+
+	# Send updates to client
+	var player := game_state.get_player(player_id)
+	_send_to_peer(peer_id, Serialization.encode_inventory_sync(
+		player_id,
+		player.inventory,
+		player.equipment,
+		player.hotbar,
+		player.stats
+	))
+
+	print("GameServer: Player %s equipped %s" % [player_id, item.definition.name])
+
+
+## Handle unequip request from client
+func _on_unequip_requested(peer_id: int, equip_slot: int) -> void:
+	if not _peer_to_player.has(peer_id):
+		return
+
+	var player_id: String = _peer_to_player[peer_id]
+
+	if not _player_inventories.has(player_id) or not _player_equipment.has(player_id):
+		return
+
+	var inventory: Inventory = _player_inventories[player_id]
+	var equipment: EquipmentSlots = _player_equipment[player_id]
+
+	# Unequip the item
+	var item := equipment.unequip(equip_slot)
+	if item == null:
+		_send_to_peer(peer_id, Serialization.encode_error("No item in that slot"))
+		return
+
+	# Add to inventory
+	var stack := ItemStack.new(item, 1)
+	var leftover := inventory.add_stack(stack)
+	if leftover != null and not leftover.is_empty():
+		# Couldn't fit in inventory, re-equip
+		equipment.equip(item)
+		_send_to_peer(peer_id, Serialization.encode_error("Inventory full"))
+		return
+
+	# Sync to PlayerState
+	_sync_player_inventory_to_state(player_id)
+
+	# Send updates to client
+	var player := game_state.get_player(player_id)
+	_send_to_peer(peer_id, Serialization.encode_inventory_sync(
+		player_id,
+		player.inventory,
+		player.equipment,
+		player.hotbar,
+		player.stats
+	))
+
+	print("GameServer: Player %s unequipped %s" % [player_id, item.definition.name])
+
+
+## Handle item drop request from client
+func _on_item_drop_requested(peer_id: int, slot: int, count: int) -> void:
+	if not _peer_to_player.has(peer_id):
+		return
+
+	var player_id: String = _peer_to_player[peer_id]
+
+	if not _player_inventories.has(player_id):
+		return
+
+	var inventory: Inventory = _player_inventories[player_id]
+
+	# Get the stack at the slot
+	var stack := inventory.get_stack_at(slot)
+	if stack == null or stack.is_empty():
+		_send_to_peer(peer_id, Serialization.encode_item_drop_response(false, slot, "", "No item in that slot"))
+		return
+
+	# For now, just remove from inventory
+	# TODO: Spawn world item when Phase 6 is implemented
+	var item_name := stack.item.definition.name if stack.item and stack.item.definition else "Unknown"
+	var drop_count := mini(count, stack.count)
+
+	if drop_count >= stack.count:
+		inventory.remove_stack(stack)
+	else:
+		stack.count -= drop_count
+
+	# Sync to PlayerState
+	_sync_player_inventory_to_state(player_id)
+
+	# Send updates to client
+	var player := game_state.get_player(player_id)
+	_send_to_peer(peer_id, Serialization.encode_item_drop_response(true, slot, ""))
+	_send_to_peer(peer_id, Serialization.encode_inventory_sync(
+		player_id,
+		player.inventory,
+		player.equipment,
+		player.hotbar,
+		player.stats
+	))
+
+	print("GameServer: Player %s dropped %d x %s" % [player_id, drop_count, item_name])
+
+
+## Handle item use request from client
+func _on_item_use_requested(peer_id: int, slot: int) -> void:
+	if not _peer_to_player.has(peer_id):
+		return
+
+	var player_id: String = _peer_to_player[peer_id]
+
+	if not _player_inventories.has(player_id):
+		return
+
+	var inventory: Inventory = _player_inventories[player_id]
+
+	# Get the stack at the slot
+	var stack := inventory.get_stack_at(slot)
+	if stack == null or stack.is_empty():
+		_send_to_peer(peer_id, Serialization.encode_error("No item in that slot"))
+		return
+
+	var item := stack.item
+	if item == null or item.definition == null:
+		_send_to_peer(peer_id, Serialization.encode_error("Invalid item"))
+		return
+
+	# Check if item is consumable
+	if item.definition.type != ItemEnums.ItemType.CONSUMABLE:
+		_send_to_peer(peer_id, Serialization.encode_error("Item cannot be used"))
+		return
+
+	# Apply use effects (simplified for now)
+	var effects := item.definition.use_effects
+	if effects.has("heal"):
+		# TODO: Apply healing when health system is implemented
+		print("GameServer: Player %s used %s (heal: %d)" % [player_id, item.definition.name, effects["heal"]])
+
+	# Consume the item
+	stack.count -= 1
+	if stack.is_empty():
+		inventory.remove_stack(stack)
+
+	# Sync to PlayerState
+	_sync_player_inventory_to_state(player_id)
+
+	# Send updates to client
+	var player := game_state.get_player(player_id)
+	_send_to_peer(peer_id, Serialization.encode_inventory_sync(
+		player_id,
+		player.inventory,
+		player.equipment,
+		player.hotbar,
+		player.stats
+	))

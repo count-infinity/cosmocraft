@@ -49,6 +49,9 @@ func _on_connected(_player_id: String) -> void:
 	hud = HUDScene.instantiate()
 	add_child(hud)
 
+	# Initialize HUD with game client for inventory UI
+	hud.initialize_game_client(game_client)
+
 func _on_disconnected() -> void:
 	print("Disconnected from server")
 	_cleanup()
