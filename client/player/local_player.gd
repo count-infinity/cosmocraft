@@ -1,13 +1,17 @@
 class_name LocalPlayer
 extends Node2D
 
+const AttackControllerScript = preload("res://client/player/attack_controller.gd")
+
 signal input_generated(input_data: Dictionary)
+signal attack_requested(aim_position: Vector2, attack_type: int)
 
 var player_id: String = ""
 var player_name: String = ""
 
 var player_input: PlayerInput
 var prediction: ClientPrediction
+var attack_controller: AttackControllerScript
 
 # Visual elements
 var body: ColorRect
@@ -16,11 +20,16 @@ var aim_indicator: Polygon2D
 # Current state
 var current_position: Vector2 = Vector2.ZERO
 var current_aim_angle: float = 0.0
+var current_aim_position: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
 	player_input = PlayerInput.new()
 	prediction = ClientPrediction.new()
+	attack_controller = AttackControllerScript.new()
 	_create_visuals()
+
+	# Connect attack controller signals
+	attack_controller.attack_requested.connect(_on_attack_requested)
 
 func _create_visuals() -> void:
 	var size := GameConstants.PLAYER_SIZE
@@ -64,9 +73,41 @@ func _process(delta: float) -> void:
 	# Emit for network send
 	input_generated.emit(input_data)
 
+	# Update attack controller with current aim position
+	current_aim_position = _get_world_aim_position()
+	attack_controller.update(delta, current_aim_position)
+
 	# Update visuals
 	position = current_position
 	aim_indicator.rotation = current_aim_angle
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Pass input events to attack controller
+	if attack_controller.handle_input(event):
+		get_viewport().set_input_as_handled()
+
+
+## Get the world position the player is aiming at
+func _get_world_aim_position() -> Vector2:
+	var viewport := get_viewport()
+	if viewport == null:
+		return current_position + Vector2.RIGHT * 100.0
+
+	var mouse_pos := viewport.get_mouse_position()
+	var camera := viewport.get_camera_2d()
+	if camera != null:
+		# Convert screen position to world position
+		var camera_offset := camera.get_screen_center_position() - viewport.get_visible_rect().size / 2.0
+		return mouse_pos + camera_offset
+	else:
+		# No camera, assume mouse position is world position offset from player
+		return current_position + (mouse_pos - viewport.get_visible_rect().size / 2.0)
+
+
+## Called when attack controller wants to send an attack request
+func _on_attack_requested(aim_position: Vector2, attack_type: int) -> void:
+	attack_requested.emit(aim_position, attack_type)
 
 func _apply_input_locally(input_data: Dictionary, delta: float) -> void:
 	var move_dir: Vector2 = input_data.get("move_direction", Vector2.ZERO)

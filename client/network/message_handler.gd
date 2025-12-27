@@ -20,6 +20,34 @@ signal stats_update_received(player_id: String, stats: Dictionary)
 signal item_pickup_response_received(success: bool, item_id: String, stack_data: Variant, error: String)
 signal item_drop_response_received(success: bool, slot: int, world_item_id: String, error: String)
 
+# Ground item signals
+signal ground_item_spawned_received(item_data: Dictionary)
+signal ground_item_removed_received(item_id: String, reason: String)
+signal ground_items_sync_received(items: Array)
+
+# Crafting signals
+signal craft_response_received(success: bool, recipe_id: String, items_created: Array, xp_gained: int, skill_name: String, error: String)
+
+# Combat signals
+signal player_died_received(player_id: String, killer_id: String, corpse_data: Dictionary)
+signal player_respawn_received(player_id: String, position: Vector2, current_hp: float, max_hp: float)
+signal corpse_spawned_received(corpse_data: Dictionary)
+signal corpse_recovered_received(player_id: String, corpse_id: String)
+signal corpse_expired_received(corpse_id: String)
+signal health_update_received(player_id: String, current_hp: float, max_hp: float)
+
+# Attack signals
+signal attack_result_received(success: bool, hits: Array, cooldown: float)
+signal entity_damaged_received(entity_id: String, damage: float, is_crit: bool, current_hp: float, max_hp: float, attacker_id: String)
+signal entity_died_received(entity_id: String, killer_id: String, entity_type: String)
+
+# Enemy signals
+signal enemy_spawn_received(enemy_data: Dictionary, definition_data: Dictionary)
+signal enemy_update_received(enemy_id: String, state_data: Dictionary)
+signal enemy_death_received(enemy_id: String, killer_id: String, loot_items: Array)
+signal enemy_despawn_received(enemy_id: String)
+signal enemies_sync_received(enemies: Array, definitions: Dictionary)
+
 func handle_message(json_string: String) -> void:
 	@warning_ignore("inference_on_variant")
 	var message := Serialization.decode_message(json_string)
@@ -64,6 +92,45 @@ func handle_message(json_string: String) -> void:
 			_handle_item_pickup_response(data)
 		MessageTypes.ITEM_DROP_RESPONSE:
 			_handle_item_drop_response(data)
+		# Ground item messages
+		MessageTypes.GROUND_ITEM_SPAWNED:
+			_handle_ground_item_spawned(data)
+		MessageTypes.GROUND_ITEM_REMOVED:
+			_handle_ground_item_removed(data)
+		MessageTypes.GROUND_ITEMS_SYNC:
+			_handle_ground_items_sync(data)
+		# Crafting messages
+		MessageTypes.CRAFT_RESPONSE:
+			_handle_craft_response(data)
+		# Combat messages
+		MessageTypes.PLAYER_DIED:
+			_handle_player_died(data)
+		MessageTypes.PLAYER_RESPAWN:
+			_handle_player_respawn(data)
+		MessageTypes.CORPSE_SPAWNED:
+			_handle_corpse_spawned(data)
+		MessageTypes.CORPSE_RECOVERED:
+			_handle_corpse_recovered(data)
+		MessageTypes.CORPSE_EXPIRED:
+			_handle_corpse_expired(data)
+		MessageTypes.HEALTH_UPDATE:
+			_handle_health_update(data)
+		# Attack messages
+		MessageTypes.ATTACK_RESULT:
+			_handle_attack_result(data)
+		MessageTypes.ENTITY_DAMAGED:
+			_handle_entity_damaged(data)
+		MessageTypes.ENTITY_DIED:
+			_handle_entity_died(data)
+		# Enemy messages
+		MessageTypes.ENEMY_SPAWN:
+			_handle_enemy_spawn(data)
+		MessageTypes.ENEMY_UPDATE:
+			_handle_enemy_update(data)
+		MessageTypes.ENEMY_DEATH:
+			_handle_enemy_death(data)
+		MessageTypes.ENEMY_DESPAWN:
+			_handle_enemy_despawn(data)
 		_:
 			printerr("ClientMessageHandler: Unknown message type '%s'" % msg_type)
 
@@ -172,3 +239,152 @@ func _handle_item_drop_response(data: Dictionary) -> void:
 	var world_item_id: String = data.get("world_item_id", "")
 	var error: String = data.get("error", "")
 	item_drop_response_received.emit(success, slot, world_item_id, error)
+
+
+# =============================================================================
+# Ground item message handlers
+# =============================================================================
+
+func _handle_ground_item_spawned(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_ground_item_spawned(data)
+	ground_item_spawned_received.emit(parsed)
+
+
+func _handle_ground_item_removed(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_ground_item_removed(data)
+	ground_item_removed_received.emit(parsed["id"], parsed["reason"])
+
+
+func _handle_ground_items_sync(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var items := Serialization.parse_ground_items_sync(data)
+	ground_items_sync_received.emit(items)
+
+
+# =============================================================================
+# Crafting message handlers
+# =============================================================================
+
+func _handle_craft_response(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_craft_response(data)
+	craft_response_received.emit(
+		parsed["success"],
+		parsed["recipe_id"],
+		parsed["items_created"],
+		parsed["xp_gained"],
+		parsed["skill_name"],
+		parsed["error"]
+	)
+
+
+# =============================================================================
+# Combat message handlers
+# =============================================================================
+
+func _handle_player_died(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_player_died(data)
+	player_died_received.emit(parsed["player_id"], parsed["killer_id"], parsed["corpse"])
+
+
+func _handle_player_respawn(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_player_respawn(data)
+	player_respawn_received.emit(
+		parsed["player_id"],
+		parsed["position"],
+		parsed["current_hp"],
+		parsed["max_hp"]
+	)
+
+
+func _handle_corpse_spawned(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_corpse_spawned(data)
+	corpse_spawned_received.emit(parsed)
+
+
+func _handle_corpse_recovered(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_corpse_recovered(data)
+	corpse_recovered_received.emit(parsed["player_id"], parsed["corpse_id"])
+
+
+func _handle_corpse_expired(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_corpse_expired(data)
+	corpse_expired_received.emit(parsed["corpse_id"])
+
+
+func _handle_health_update(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_health_update(data)
+	health_update_received.emit(parsed["player_id"], parsed["current_hp"], parsed["max_hp"])
+
+
+# =============================================================================
+# Attack message handlers
+# =============================================================================
+
+func _handle_attack_result(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_attack_result(data)
+	attack_result_received.emit(
+		parsed["success"],
+		parsed["hits"],
+		parsed["cooldown"]
+	)
+
+
+func _handle_entity_damaged(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_entity_damaged(data)
+	entity_damaged_received.emit(
+		parsed["entity_id"],
+		parsed["damage"],
+		parsed["is_crit"],
+		parsed["current_hp"],
+		parsed["max_hp"],
+		parsed["attacker_id"]
+	)
+
+
+func _handle_entity_died(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_entity_died(data)
+	entity_died_received.emit(
+		parsed["entity_id"],
+		parsed["killer_id"],
+		parsed["entity_type"]
+	)
+
+
+# =============================================================================
+# Enemy message handlers
+# =============================================================================
+
+func _handle_enemy_spawn(data: Dictionary) -> void:
+	var enemy_data: Dictionary = data.get("enemy", {})
+	var definition_data: Dictionary = data.get("definition", {})
+	enemy_spawn_received.emit(enemy_data, definition_data)
+
+
+func _handle_enemy_update(data: Dictionary) -> void:
+	var enemy_id: String = data.get("id", "")
+	var state_data: Dictionary = data.get("state", data)  # Fallback to full data
+	enemy_update_received.emit(enemy_id, state_data)
+
+
+func _handle_enemy_death(data: Dictionary) -> void:
+	var enemy_id: String = data.get("id", "")
+	var killer_id: String = data.get("killer_id", "")
+	var loot_items: Array = data.get("loot", [])
+	enemy_death_received.emit(enemy_id, killer_id, loot_items)
+
+
+func _handle_enemy_despawn(data: Dictionary) -> void:
+	var enemy_id: String = data.get("id", "")
+	enemy_despawn_received.emit(enemy_id)

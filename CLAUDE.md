@@ -46,7 +46,7 @@ Option 2 - With GUI:
 Or from within the Godot editor: use the GUT panel at the bottom.
 
 GUT version: 9.5.1
-Current test count: 425 tests
+Current test count: 939 tests (34 test scripts)
 
 ## Project Structure
 ```

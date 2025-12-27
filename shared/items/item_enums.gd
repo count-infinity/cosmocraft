@@ -78,6 +78,22 @@ enum ToolMode {
 }
 
 
+## Weapon type - determines attack style and visuals
+enum WeaponType {
+	NONE,           # Not a weapon
+	SWORD,          # Wide arc melee (slash)
+	AXE,            # Wide arc melee (slash)
+	MACE,           # Wide arc melee (slash)
+	DAGGER,         # Narrow thrust melee
+	SPEAR,          # Narrow thrust melee
+	RAPIER,         # Narrow thrust melee
+	BOW,            # Ranged projectile
+	CROSSBOW,       # Ranged projectile
+	GUN,            # Ranged projectile
+	STAFF,          # Ranged projectile (magic)
+}
+
+
 ## Get display name for a stat
 static func get_stat_name(stat: StatType) -> String:
 	match stat:
@@ -124,4 +140,21 @@ static func get_slot_name(slot: EquipSlot) -> String:
 		EquipSlot.MAIN_HAND: return "Main Hand"
 		EquipSlot.OFF_HAND: return "Off Hand"
 		EquipSlot.ACCESSORY: return "Accessory"
+		_: return "Unknown"
+
+
+## Get display name for weapon type
+static func get_weapon_type_name(weapon_type: WeaponType) -> String:
+	match weapon_type:
+		WeaponType.NONE: return "None"
+		WeaponType.SWORD: return "Sword"
+		WeaponType.AXE: return "Axe"
+		WeaponType.MACE: return "Mace"
+		WeaponType.DAGGER: return "Dagger"
+		WeaponType.SPEAR: return "Spear"
+		WeaponType.RAPIER: return "Rapier"
+		WeaponType.BOW: return "Bow"
+		WeaponType.CROSSBOW: return "Crossbow"
+		WeaponType.GUN: return "Gun"
+		WeaponType.STAFF: return "Staff"
 		_: return "Unknown"

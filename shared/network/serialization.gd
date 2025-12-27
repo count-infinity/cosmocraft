@@ -1,6 +1,8 @@
 class_name Serialization
 extends RefCounted
 
+const EnemyStateScript = preload("res://shared/entities/enemy_state.gd")
+
 # Encode a message to JSON string
 static func encode_message(type: String, data: Dictionary) -> String:
 	var message := {
@@ -390,4 +392,426 @@ static func parse_unequip_request(data: Dictionary) -> Dictionary:
 static func parse_item_use_request(data: Dictionary) -> Dictionary:
 	return {
 		"slot": data.get("slot", 0)
+	}
+
+
+# ===== Ground Item Network Messages =====
+
+# Encode a ground item spawned message (server -> client)
+static func encode_ground_item_spawned(world_item: WorldItem) -> String:
+	return encode_message(MessageTypes.GROUND_ITEM_SPAWNED, world_item.to_dict())
+
+
+# Encode a ground item removed message (server -> client)
+static func encode_ground_item_removed(world_item_id: String, reason: String = "pickup") -> String:
+	return encode_message(MessageTypes.GROUND_ITEM_REMOVED, {
+		"id": world_item_id,
+		"reason": reason  # "pickup", "despawn", "destroyed"
+	})
+
+
+# Encode a full sync of ground items (server -> client)
+static func encode_ground_items_sync(world_items: Array) -> String:
+	var items_data: Array = []
+	for world_item in world_items:
+		if world_item is WorldItem:
+			items_data.append(world_item.to_dict())
+	return encode_message(MessageTypes.GROUND_ITEMS_SYNC, {
+		"items": items_data
+	})
+
+
+# Parse a ground item spawned message
+static func parse_ground_item_spawned(data: Dictionary) -> Dictionary:
+	return data  # Already in the right format for WorldItem.from_dict()
+
+
+# Parse a ground item removed message
+static func parse_ground_item_removed(data: Dictionary) -> Dictionary:
+	return {
+		"id": data.get("id", ""),
+		"reason": data.get("reason", "pickup")
+	}
+
+
+# Parse a ground items sync message
+static func parse_ground_items_sync(data: Dictionary) -> Array:
+	return data.get("items", [])
+
+
+# ===== Crafting Network Messages =====
+
+# Encode a craft request (client -> server)
+static func encode_craft_request(recipe_id: String) -> String:
+	return encode_message(MessageTypes.CRAFT_REQUEST, {
+		"recipe_id": recipe_id
+	})
+
+
+# Parse a craft request
+static func parse_craft_request(data: Dictionary) -> Dictionary:
+	return {
+		"recipe_id": data.get("recipe_id", "")
+	}
+
+
+# Encode a craft response (server -> client)
+static func encode_craft_response(
+	success: bool,
+	recipe_id: String,
+	items_created: Array = [],
+	xp_gained: int = 0,
+	skill_name: String = "",
+	error_message: String = ""
+) -> String:
+	return encode_message(MessageTypes.CRAFT_RESPONSE, {
+		"success": success,
+		"recipe_id": recipe_id,
+		"items_created": items_created,
+		"xp_gained": xp_gained,
+		"skill_name": skill_name,
+		"error": error_message
+	})
+
+
+# Parse a craft response
+static func parse_craft_response(data: Dictionary) -> Dictionary:
+	return {
+		"success": data.get("success", false),
+		"recipe_id": data.get("recipe_id", ""),
+		"items_created": data.get("items_created", []),
+		"xp_gained": data.get("xp_gained", 0),
+		"skill_name": data.get("skill_name", ""),
+		"error": data.get("error", "")
+	}
+
+
+# ===== Combat Network Messages =====
+
+# Encode a player died message (server -> client)
+static func encode_player_died(
+	player_id: String,
+	killer_id: String,
+	corpse_data: Dictionary
+) -> String:
+	return encode_message(MessageTypes.PLAYER_DIED, {
+		"player_id": player_id,
+		"killer_id": killer_id,
+		"corpse": corpse_data
+	})
+
+
+# Parse a player died message
+static func parse_player_died(data: Dictionary) -> Dictionary:
+	return {
+		"player_id": data.get("player_id", ""),
+		"killer_id": data.get("killer_id", ""),
+		"corpse": data.get("corpse", {})
+	}
+
+
+# Encode a player respawn message (server -> client)
+static func encode_player_respawn(
+	player_id: String,
+	position: Vector2,
+	current_hp: float,
+	max_hp: float
+) -> String:
+	return encode_message(MessageTypes.PLAYER_RESPAWN, {
+		"player_id": player_id,
+		"position": {"x": position.x, "y": position.y},
+		"current_hp": current_hp,
+		"max_hp": max_hp
+	})
+
+
+# Parse a player respawn message
+static func parse_player_respawn(data: Dictionary) -> Dictionary:
+	var pos_data: Dictionary = data.get("position", {})
+	return {
+		"player_id": data.get("player_id", ""),
+		"position": Vector2(float(pos_data.get("x", 0.0)), float(pos_data.get("y", 0.0))),
+		"current_hp": float(data.get("current_hp", 100.0)),
+		"max_hp": float(data.get("max_hp", 100.0))
+	}
+
+
+# Encode a corpse spawned message (server -> client)
+static func encode_corpse_spawned(corpse_data: Dictionary) -> String:
+	return encode_message(MessageTypes.CORPSE_SPAWNED, corpse_data)
+
+
+# Parse a corpse spawned message
+static func parse_corpse_spawned(data: Dictionary) -> Dictionary:
+	return data
+
+
+# Encode a corpse recovered message (server -> client)
+static func encode_corpse_recovered(player_id: String, corpse_id: String) -> String:
+	return encode_message(MessageTypes.CORPSE_RECOVERED, {
+		"player_id": player_id,
+		"corpse_id": corpse_id
+	})
+
+
+# Parse a corpse recovered message
+static func parse_corpse_recovered(data: Dictionary) -> Dictionary:
+	return {
+		"player_id": data.get("player_id", ""),
+		"corpse_id": data.get("corpse_id", "")
+	}
+
+
+# Encode a corpse expired message (server -> client)
+static func encode_corpse_expired(corpse_id: String) -> String:
+	return encode_message(MessageTypes.CORPSE_EXPIRED, {
+		"corpse_id": corpse_id
+	})
+
+
+# Parse a corpse expired message
+static func parse_corpse_expired(data: Dictionary) -> Dictionary:
+	return {
+		"corpse_id": data.get("corpse_id", "")
+	}
+
+
+# Encode a health update message (server -> client)
+static func encode_health_update(
+	player_id: String,
+	current_hp: float,
+	max_hp: float
+) -> String:
+	return encode_message(MessageTypes.HEALTH_UPDATE, {
+		"player_id": player_id,
+		"current_hp": current_hp,
+		"max_hp": max_hp
+	})
+
+
+# Parse a health update message
+static func parse_health_update(data: Dictionary) -> Dictionary:
+	return {
+		"player_id": data.get("player_id", ""),
+		"current_hp": float(data.get("current_hp", 100.0)),
+		"max_hp": float(data.get("max_hp", 100.0))
+	}
+
+
+# Encode a corpse recover request (client -> server)
+static func encode_corpse_recover_request(corpse_id: String) -> String:
+	return encode_message(MessageTypes.CORPSE_RECOVER_REQUEST, {
+		"corpse_id": corpse_id
+	})
+
+
+# Parse a corpse recover request
+static func parse_corpse_recover_request(data: Dictionary) -> Dictionary:
+	return {
+		"corpse_id": data.get("corpse_id", "")
+	}
+
+
+# ===== Attack Network Messages =====
+
+# Encode an attack request (client -> server)
+static func encode_attack_request(aim_position: Vector2, attack_type: int) -> String:
+	return encode_message(MessageTypes.ATTACK_REQUEST, {
+		"aim_x": aim_position.x,
+		"aim_y": aim_position.y,
+		"attack_type": attack_type
+	})
+
+
+# Parse an attack request
+static func parse_attack_request(data: Dictionary) -> Dictionary:
+	return {
+		"aim_position": Vector2(float(data.get("aim_x", 0.0)), float(data.get("aim_y", 0.0))),
+		"attack_type": int(data.get("attack_type", 0))
+	}
+
+
+# Encode an attack result (server -> client, sent to attacker)
+# hits is an array of dictionaries: [{target_id, damage, is_crit, remaining_hp}]
+static func encode_attack_result(
+	success: bool,
+	hits: Array,
+	cooldown: float
+) -> String:
+	return encode_message(MessageTypes.ATTACK_RESULT, {
+		"success": success,
+		"hits": hits,
+		"cooldown": cooldown
+	})
+
+
+# Parse an attack result
+static func parse_attack_result(data: Dictionary) -> Dictionary:
+	var hits_data: Array = data.get("hits", [])
+	var parsed_hits: Array = []
+
+	for hit in hits_data:
+		if hit is Dictionary:
+			parsed_hits.append({
+				"target_id": hit.get("target_id", ""),
+				"damage": float(hit.get("damage", 0.0)),
+				"is_crit": hit.get("is_crit", false),
+				"remaining_hp": float(hit.get("remaining_hp", 0.0))
+			})
+
+	return {
+		"success": data.get("success", false),
+		"hits": parsed_hits,
+		"cooldown": float(data.get("cooldown", 0.0))
+	}
+
+
+# Encode an entity damaged broadcast (server -> all clients)
+static func encode_entity_damaged(
+	entity_id: String,
+	damage: float,
+	is_crit: bool,
+	current_hp: float,
+	max_hp: float,
+	attacker_id: String
+) -> String:
+	return encode_message(MessageTypes.ENTITY_DAMAGED, {
+		"entity_id": entity_id,
+		"damage": damage,
+		"is_crit": is_crit,
+		"current_hp": current_hp,
+		"max_hp": max_hp,
+		"attacker_id": attacker_id
+	})
+
+
+# Parse an entity damaged message
+static func parse_entity_damaged(data: Dictionary) -> Dictionary:
+	return {
+		"entity_id": data.get("entity_id", ""),
+		"damage": float(data.get("damage", 0.0)),
+		"is_crit": data.get("is_crit", false),
+		"current_hp": float(data.get("current_hp", 0.0)),
+		"max_hp": float(data.get("max_hp", 0.0)),
+		"attacker_id": data.get("attacker_id", "")
+	}
+
+
+# Encode an entity died broadcast (server -> all clients)
+static func encode_entity_died(
+	entity_id: String,
+	killer_id: String,
+	entity_type: String
+) -> String:
+	return encode_message(MessageTypes.ENTITY_DIED, {
+		"entity_id": entity_id,
+		"killer_id": killer_id,
+		"entity_type": entity_type
+	})
+
+
+# Parse an entity died message
+static func parse_entity_died(data: Dictionary) -> Dictionary:
+	return {
+		"entity_id": data.get("entity_id", ""),
+		"killer_id": data.get("killer_id", ""),
+		"entity_type": data.get("entity_type", "")
+	}
+
+
+# ===== Enemy Network Messages =====
+
+# Encode an enemy spawn message (server -> client)
+# Sends the full EnemyState for a newly spawned enemy
+static func encode_enemy_spawn(enemy_state: EnemyStateScript) -> String:
+	return encode_message(MessageTypes.ENEMY_SPAWN, enemy_state.to_dict())
+
+
+# Parse an enemy spawn message
+static func parse_enemy_spawn(data: Dictionary) -> EnemyStateScript:
+	return EnemyStateScript.from_dict(data)
+
+
+# Encode an enemy update message (server -> client)
+# Sends partial state for efficient updates
+static func encode_enemy_update(
+	enemy_id: String,
+	position: Vector2,
+	velocity: Vector2,
+	current_hp: float,
+	state: int
+) -> String:
+	return encode_message(MessageTypes.ENEMY_UPDATE, {
+		"id": enemy_id,
+		"position": {"x": position.x, "y": position.y},
+		"velocity": {"x": velocity.x, "y": velocity.y},
+		"current_hp": current_hp,
+		"state": state
+	})
+
+
+# Parse an enemy update message
+static func parse_enemy_update(data: Dictionary) -> Dictionary:
+	var pos_data: Dictionary = data.get("position", {})
+	var vel_data: Dictionary = data.get("velocity", {})
+
+	return {
+		"id": data.get("id", ""),
+		"position": Vector2(
+			float(pos_data.get("x", 0.0)),
+			float(pos_data.get("y", 0.0))
+		),
+		"velocity": Vector2(
+			float(vel_data.get("x", 0.0)),
+			float(vel_data.get("y", 0.0))
+		),
+		"current_hp": float(data.get("current_hp", 0.0)),
+		"state": int(data.get("state", 0))
+	}
+
+
+# Encode an enemy death message (server -> client)
+static func encode_enemy_death(
+	enemy_id: String,
+	killer_id: String,
+	position: Vector2,
+	loot_drops: Array = []
+) -> String:
+	return encode_message(MessageTypes.ENEMY_DEATH, {
+		"id": enemy_id,
+		"killer_id": killer_id,
+		"position": {"x": position.x, "y": position.y},
+		"loot_drops": loot_drops
+	})
+
+
+# Parse an enemy death message
+static func parse_enemy_death(data: Dictionary) -> Dictionary:
+	var pos_data: Dictionary = data.get("position", {})
+
+	return {
+		"id": data.get("id", ""),
+		"killer_id": data.get("killer_id", ""),
+		"position": Vector2(
+			float(pos_data.get("x", 0.0)),
+			float(pos_data.get("y", 0.0))
+		),
+		"loot_drops": data.get("loot_drops", [])
+	}
+
+
+# Encode an enemy despawn message (server -> client)
+# Used when an enemy is removed from the world (respawn, cleanup, etc.)
+static func encode_enemy_despawn(enemy_id: String, reason: String = "despawn") -> String:
+	return encode_message(MessageTypes.ENEMY_DESPAWN, {
+		"id": enemy_id,
+		"reason": reason
+	})
+
+
+# Parse an enemy despawn message
+static func parse_enemy_despawn(data: Dictionary) -> Dictionary:
+	return {
+		"id": data.get("id", ""),
+		"reason": data.get("reason", "despawn")
 	}

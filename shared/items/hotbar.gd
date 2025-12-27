@@ -2,7 +2,8 @@ class_name Hotbar
 extends RefCounted
 ## Fixed-slot hotbar for quick item access.
 ## Contains 8 slots that reference items from inventory.
-## Hotbar stores references to ItemStacks, not copies.
+## Hotbar stores both ItemStack references and inventory slot indices.
+## The indices are used to relink references after inventory sync.
 
 
 ## Signal emitted when hotbar selection changes
@@ -18,6 +19,10 @@ const SLOT_COUNT: int = 8
 ## The hotbar slots (can contain null for empty slots)
 var _slots: Array = []
 
+## Inventory slot indices for each hotbar slot (-1 = not linked to inventory)
+## Used to reliably relink references after inventory sync
+var _inventory_indices: Array[int] = []
+
 ## Currently selected slot index
 var selected_slot: int = 0
 
@@ -32,8 +37,10 @@ func _init(inventory: Inventory = null, item_registry: ItemRegistry = null) -> v
 	_inventory = inventory
 	_item_registry = item_registry
 	_slots.resize(SLOT_COUNT)
+	_inventory_indices.resize(SLOT_COUNT)
 	for i in range(SLOT_COUNT):
 		_slots[i] = null
+		_inventory_indices[i] = -1
 
 
 ## Set the inventory reference
@@ -54,11 +61,18 @@ func get_slot(index: int) -> ItemStack:
 
 
 ## Set an item in a slot (assigns reference from inventory)
-func set_slot(index: int, stack: ItemStack) -> void:
+## Optionally specify the inventory slot index for reliable relinking after sync
+func set_slot(index: int, stack: ItemStack, inventory_index: int = -1) -> void:
 	if index < 0 or index >= SLOT_COUNT:
 		return
 
 	_slots[index] = stack
+	_inventory_indices[index] = inventory_index
+
+	# If no inventory index provided, try to find it
+	if inventory_index < 0 and stack != null and _inventory != null:
+		_inventory_indices[index] = _find_inventory_index_for_stack(stack)
+
 	slot_changed.emit(index)
 
 
@@ -69,6 +83,7 @@ func clear_slot(index: int) -> void:
 
 	if _slots[index] != null:
 		_slots[index] = null
+		_inventory_indices[index] = -1
 		slot_changed.emit(index)
 
 
@@ -115,9 +130,14 @@ func swap_slots(index_a: int, index_b: int) -> void:
 	if index_a == index_b:
 		return
 
-	var temp: ItemStack = _slots[index_a]
+	var temp_stack: ItemStack = _slots[index_a]
+	var temp_index: int = _inventory_indices[index_a]
+
 	_slots[index_a] = _slots[index_b]
-	_slots[index_b] = temp
+	_inventory_indices[index_a] = _inventory_indices[index_b]
+
+	_slots[index_b] = temp_stack
+	_inventory_indices[index_b] = temp_index
 
 	slot_changed.emit(index_a)
 	slot_changed.emit(index_b)
@@ -131,6 +151,7 @@ func assign_from_inventory(inventory_stack: ItemStack, slot: int) -> bool:
 		return false
 
 	_slots[slot] = inventory_stack
+	_inventory_indices[slot] = _find_inventory_index_for_stack(inventory_stack)
 	slot_changed.emit(slot)
 	return true
 
@@ -156,6 +177,7 @@ func use_slot(index: int) -> ItemInstance:
 	# If stack is now empty, clear the slot reference
 	if stack.is_empty():
 		_slots[index] = null
+		_inventory_indices[index] = -1
 		slot_changed.emit(index)
 
 	return item
@@ -193,11 +215,13 @@ func clear() -> void:
 	for i in range(SLOT_COUNT):
 		if _slots[i] != null:
 			_slots[i] = null
+			_inventory_indices[i] = -1
 			slot_changed.emit(i)
 
 
 ## Validate hotbar slots against inventory
 ## Removes any slots that reference items no longer in inventory
+## Also refreshes references if inventory index is valid
 func validate(inventory: Inventory) -> void:
 	if inventory == null:
 		return
@@ -206,9 +230,20 @@ func validate(inventory: Inventory) -> void:
 	for i in range(SLOT_COUNT):
 		var stack: ItemStack = _slots[i]
 		if stack != null:
-			# Check if this stack is still in inventory
+			# First try to refresh reference using stored inventory index
+			var inv_idx := _inventory_indices[i]
+			if inv_idx >= 0 and inv_idx < inventory.get_stack_count():
+				var inv_stack := inventory.get_stack_at(inv_idx)
+				if inv_stack != null and not inv_stack.is_empty():
+					# Verify it's the same item type
+					if _stacks_match_type(stack, inv_stack):
+						_slots[i] = inv_stack
+						continue
+
+			# Fallback: Check if current reference is still valid
 			if stack not in inventory_stacks or stack.is_empty():
 				_slots[i] = null
+				_inventory_indices[i] = -1
 				slot_changed.emit(i)
 
 
@@ -221,6 +256,7 @@ func auto_assign(stack: ItemStack) -> int:
 	var empty_slot := find_empty_slot()
 	if empty_slot >= 0:
 		_slots[empty_slot] = stack
+		_inventory_indices[empty_slot] = _find_inventory_index_for_stack(stack)
 		slot_changed.emit(empty_slot)
 
 	return empty_slot
@@ -235,6 +271,7 @@ func to_dict() -> Dictionary:
 			slots_data.append({
 				"slot": i,
 				"stack": stack.to_dict(),
+				"inv_idx": _inventory_indices[i],
 			})
 		# Don't include empty slots
 
@@ -245,8 +282,8 @@ func to_dict() -> Dictionary:
 
 
 ## Deserialize from dictionary
-## Note: This creates new stacks - after loading, you may want to
-## re-link these to the actual inventory stacks using link_to_inventory()
+## Note: This creates new stacks - after loading, you should call
+## link_to_inventory() to re-link these to the actual inventory stacks
 func from_dict(data: Dictionary) -> void:
 	clear()
 
@@ -265,38 +302,111 @@ func from_dict(data: Dictionary) -> void:
 				var stack := ItemStack.from_dict(stack_data, _item_registry)
 				if stack != null and not stack.is_empty():
 					_slots[slot_idx] = stack
+					_inventory_indices[slot_idx] = int(slot_data.get("inv_idx", -1))
 
 
 ## Re-link hotbar slots to matching inventory stacks after loading
 ## This ensures hotbar references the same objects as inventory
+## Uses stored inventory indices for reliable matching, falls back to item ID match
 func link_to_inventory(inventory: Inventory) -> void:
 	if inventory == null:
 		return
 
-	var inv_stacks := inventory.get_all_stacks()
+	_inventory = inventory
 
 	for i in range(SLOT_COUNT):
 		var hotbar_stack: ItemStack = _slots[i]
 		if hotbar_stack == null:
 			continue
 
-		# Find matching stack in inventory by item ID
+		# First try using stored inventory index
+		var inv_idx := _inventory_indices[i]
+		if inv_idx >= 0 and inv_idx < inventory.get_stack_count():
+			var inv_stack := inventory.get_stack_at(inv_idx)
+			if inv_stack != null and not inv_stack.is_empty():
+				# Verify it's the same item type to prevent mismatches after inventory changes
+				if _stacks_match_type(hotbar_stack, inv_stack):
+					_slots[i] = inv_stack
+					continue
+
+		# Fallback: Find matching stack by item ID
 		var item_id := ""
 		if hotbar_stack.item != null and hotbar_stack.item.definition != null:
 			item_id = hotbar_stack.item.definition.id
 
 		if item_id.is_empty():
 			_slots[i] = null
+			_inventory_indices[i] = -1
 			continue
 
-		# Find first matching stack in inventory
+		# Find matching stack in inventory and update the index
 		var found := false
-		for inv_stack in inv_stacks:
+		var inv_stacks := inventory.get_all_stacks()
+		for j in range(inv_stacks.size()):
+			var inv_stack: ItemStack = inv_stacks[j]
 			if inv_stack.item != null and inv_stack.item.definition != null:
 				if inv_stack.item.definition.id == item_id:
 					_slots[i] = inv_stack
+					_inventory_indices[i] = j
 					found = true
 					break
 
 		if not found:
 			_slots[i] = null
+			_inventory_indices[i] = -1
+
+
+## Check if two stacks have matching item types
+func _stacks_match_type(stack_a: ItemStack, stack_b: ItemStack) -> bool:
+	if stack_a == null or stack_b == null:
+		return false
+	if stack_a.item == null or stack_b.item == null:
+		return false
+	if stack_a.item.definition == null or stack_b.item.definition == null:
+		return false
+	return stack_a.item.definition.id == stack_b.item.definition.id
+
+
+## Find the inventory index for a given stack
+func _find_inventory_index_for_stack(stack: ItemStack) -> int:
+	if _inventory == null or stack == null:
+		return -1
+
+	var stacks := _inventory.get_all_stacks()
+	for i in range(stacks.size()):
+		if stacks[i] == stack:
+			return i
+	return -1
+
+
+## Get the inventory index for a hotbar slot
+func get_inventory_index(hotbar_slot: int) -> int:
+	if hotbar_slot < 0 or hotbar_slot >= SLOT_COUNT:
+		return -1
+	return _inventory_indices[hotbar_slot]
+
+
+## Refresh all hotbar references from inventory using stored indices
+## Call this after inventory sync to update stale references
+func refresh_from_inventory(inventory: Inventory) -> void:
+	if inventory == null:
+		return
+
+	_inventory = inventory
+
+	for i in range(SLOT_COUNT):
+		if _slots[i] == null:
+			continue
+
+		var inv_idx := _inventory_indices[i]
+		if inv_idx >= 0 and inv_idx < inventory.get_stack_count():
+			var inv_stack := inventory.get_stack_at(inv_idx)
+			if inv_stack != null and not inv_stack.is_empty():
+				if _stacks_match_type(_slots[i], inv_stack):
+					_slots[i] = inv_stack
+					continue
+
+		# Index invalid or type mismatch - clear the slot
+		_slots[i] = null
+		_inventory_indices[i] = -1
+		slot_changed.emit(i)

@@ -37,3 +37,45 @@ const EQUIPMENT_UPDATE: String = "equipment_update"  # Equipment slot changes
 const ITEM_PICKUP_RESPONSE: String = "item_pickup_response"  # Server confirms/denies pickup
 const ITEM_DROP_RESPONSE: String = "item_drop_response"  # Server confirms drop
 const STATS_UPDATE: String = "stats_update"  # Player stats changed
+
+# ===== Ground Item Messages =====
+
+# Server -> Client
+const GROUND_ITEM_SPAWNED: String = "ground_item_spawned"  # New item appeared on ground
+const GROUND_ITEM_REMOVED: String = "ground_item_removed"  # Item picked up or despawned
+const GROUND_ITEMS_SYNC: String = "ground_items_sync"  # Full sync of nearby ground items
+
+# ===== Crafting Messages =====
+
+# Client -> Server
+const CRAFT_REQUEST: String = "craft_request"  # Request to craft a recipe
+
+# Server -> Client
+const CRAFT_RESPONSE: String = "craft_response"  # Crafting result (success/failure)
+
+# ===== Combat Messages =====
+
+# Server -> Client (all combat is server-authoritative)
+const PLAYER_DIED: String = "player_died"  # Player death notification
+const PLAYER_RESPAWN: String = "player_respawn"  # Player respawn notification
+const CORPSE_SPAWNED: String = "corpse_spawned"  # New player corpse appeared
+const CORPSE_RECOVERED: String = "corpse_recovered"  # Player recovered their corpse
+const CORPSE_EXPIRED: String = "corpse_expired"  # Corpse despawned (timer ran out)
+const HEALTH_UPDATE: String = "health_update"  # Player HP changed
+
+# Client -> Server
+const CORPSE_RECOVER_REQUEST: String = "corpse_recover_request"  # Request to recover corpse items
+const ATTACK_REQUEST: String = "attack_request"  # Request to attack in aim direction
+
+# Server -> Client (attack responses)
+const ATTACK_RESULT: String = "attack_result"  # Server confirms attack hit/miss/damage
+const ENTITY_DAMAGED: String = "entity_damaged"  # Broadcast damage to entity (player or enemy)
+const ENTITY_DIED: String = "entity_died"  # Broadcast entity death
+
+# ===== Enemy Messages =====
+
+# Server -> Client
+const ENEMY_SPAWN: String = "enemy_spawn"  # Server tells client about new enemy
+const ENEMY_UPDATE: String = "enemy_update"  # Server sends enemy state changes
+const ENEMY_DEATH: String = "enemy_death"  # Server tells client enemy died
+const ENEMY_DESPAWN: String = "enemy_despawn"  # Server removes enemy from world

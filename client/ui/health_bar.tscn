@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://health_bar"]
+
+[ext_resource type="Script" path="res://client/ui/health_bar.gd" id="1_health_bar"]
+
+[node name="HealthBar" type="Control"]
+custom_minimum_size = Vector2(200, 24)
+script = ExtResource("1_health_bar")

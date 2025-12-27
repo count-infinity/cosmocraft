@@ -1,7 +1,12 @@
 class_name ServerRegistries
 extends RefCounted
-## Server-side registries for items, enchantments, etc.
+## Server-side registries for items, enchantments, enemies, etc.
 ## Initializes all game data needed for server operations.
+## Uses the shared ItemDatabase for item definitions.
+
+const ItemDatabaseClass = preload("res://shared/data/item_database.gd")
+const EnemyDatabaseClass = preload("res://shared/data/enemy_database.gd")
+const EnemyRegistryScript = preload("res://shared/entities/enemy_registry.gd")
 
 
 ## The item registry with all item definitions
@@ -10,117 +15,33 @@ var item_registry: ItemRegistry
 ## The enchantment registry
 var enchantment_registry: EnchantmentRegistry
 
+## The crafting system with all recipes
+var crafting_system: CraftingSystem
+
+## The enemy registry with all enemy definitions
+var enemy_registry: RefCounted
+
 
 func _init() -> void:
 	item_registry = ItemRegistry.new()
 	enchantment_registry = EnchantmentRegistry.new()
-	_register_starter_items()
+	crafting_system = CraftingSystem.new(item_registry)
+	enemy_registry = EnemyRegistryScript.new()
+	_initialize_registries()
 
 
-## Register all starter/base item definitions
-func _register_starter_items() -> void:
-	# Basic Pickaxe
-	var basic_pickaxe := ItemDefinition.new("basic_pickaxe", "Basic Pickaxe", ItemEnums.ItemType.TOOL)
-	basic_pickaxe.description = "A simple pickaxe for mining stone and ore."
-	basic_pickaxe.equip_slot = ItemEnums.EquipSlot.MAIN_HAND
-	basic_pickaxe.tier = 1
-	basic_pickaxe.max_stack = 1
-	basic_pickaxe.weight = 3.0
-	basic_pickaxe.base_durability = 100
-	basic_pickaxe.harvest_tier = 1
-	basic_pickaxe.available_modes = [ItemEnums.ToolMode.STANDARD, ItemEnums.ToolMode.PRECISION]
-	basic_pickaxe.base_stats = {
-		ItemEnums.StatType.EFFICIENCY: 5.0
-	}
-	item_registry.register_item(basic_pickaxe)
-
-	# Basic Axe
-	var basic_axe := ItemDefinition.new("basic_axe", "Basic Axe", ItemEnums.ItemType.TOOL)
-	basic_axe.description = "A simple axe for chopping wood."
-	basic_axe.equip_slot = ItemEnums.EquipSlot.MAIN_HAND
-	basic_axe.tier = 1
-	basic_axe.max_stack = 1
-	basic_axe.weight = 3.0
-	basic_axe.base_durability = 100
-	basic_axe.harvest_tier = 1
-	basic_axe.available_modes = [ItemEnums.ToolMode.STANDARD]
-	basic_axe.base_stats = {
-		ItemEnums.StatType.EFFICIENCY: 5.0
-	}
-	item_registry.register_item(basic_axe)
-
-	# Basic Sword
-	var basic_sword := ItemDefinition.new("basic_sword", "Basic Sword", ItemEnums.ItemType.WEAPON)
-	basic_sword.description = "A simple sword for combat."
-	basic_sword.equip_slot = ItemEnums.EquipSlot.MAIN_HAND
-	basic_sword.tier = 1
-	basic_sword.max_stack = 1
-	basic_sword.weight = 2.5
-	basic_sword.base_durability = 80
-	basic_sword.base_damage = 10
-	basic_sword.attack_speed = 1.0
-	basic_sword.enchant_slots = 1
-	basic_sword.base_stats = {
-		ItemEnums.StatType.STRENGTH: 3.0
-	}
-	item_registry.register_item(basic_sword)
-
-	# Health Potion
-	var health_potion := ItemDefinition.new("health_potion", "Health Potion", ItemEnums.ItemType.CONSUMABLE)
-	health_potion.description = "Restores 50 HP when consumed."
-	health_potion.tier = 1
-	health_potion.max_stack = 20
-	health_potion.weight = 0.5
-	health_potion.use_effects = {
-		"heal": 50
-	}
-	item_registry.register_item(health_potion)
-
-	# Cloth Shirt (Chest armor)
-	var cloth_shirt := ItemDefinition.new("cloth_shirt", "Cloth Shirt", ItemEnums.ItemType.ARMOR)
-	cloth_shirt.description = "A simple cloth shirt providing minimal protection."
-	cloth_shirt.equip_slot = ItemEnums.EquipSlot.CHEST
-	cloth_shirt.tier = 1
-	cloth_shirt.max_stack = 1
-	cloth_shirt.weight = 1.0
-	cloth_shirt.base_durability = 50
-	cloth_shirt.base_stats = {
-		ItemEnums.StatType.FORTITUDE: 2.0,
-		ItemEnums.StatType.MAX_HP: 5.0
-	}
-	item_registry.register_item(cloth_shirt)
-
-	# Cloth Pants (Legs armor)
-	var cloth_pants := ItemDefinition.new("cloth_pants", "Cloth Pants", ItemEnums.ItemType.ARMOR)
-	cloth_pants.description = "Simple cloth pants providing minimal protection."
-	cloth_pants.equip_slot = ItemEnums.EquipSlot.LEGS
-	cloth_pants.tier = 1
-	cloth_pants.max_stack = 1
-	cloth_pants.weight = 0.8
-	cloth_pants.base_durability = 50
-	cloth_pants.base_stats = {
-		ItemEnums.StatType.FORTITUDE: 1.0,
-		ItemEnums.StatType.MAX_HP: 3.0
-	}
-	item_registry.register_item(cloth_pants)
-
-	# Stone (basic material for testing)
-	var stone := ItemDefinition.new("stone", "Stone", ItemEnums.ItemType.MATERIAL)
-	stone.description = "A chunk of common stone."
-	stone.tier = 1
-	stone.max_stack = 99
-	stone.weight = 0.5
-	item_registry.register_item(stone)
-
-	# Wood (basic material for testing)
-	var wood := ItemDefinition.new("wood", "Wood", ItemEnums.ItemType.MATERIAL)
-	wood.description = "A piece of lumber."
-	wood.tier = 1
-	wood.max_stack = 99
-	wood.weight = 0.3
-	item_registry.register_item(wood)
-
-	print("ServerRegistries: Registered %d starter items" % item_registry.get_item_count())
+## Initialize registries from shared database
+func _initialize_registries() -> void:
+	ItemDatabaseClass.register_all_items(item_registry)
+	ItemDatabaseClass.register_all_enchantments(enchantment_registry)
+	ItemDatabaseClass.register_all_recipes(crafting_system)
+	EnemyDatabaseClass.register_all_enemies(enemy_registry)
+	print("ServerRegistries: Registered %d items from shared database" % item_registry.get_item_count())
+	print("ServerRegistries: Registered %d recipes (%d discovered by default)" % [
+		crafting_system.get_recipe_count(),
+		crafting_system.get_discovered_count()
+	])
+	print("ServerRegistries: Registered %d enemy types" % enemy_registry.get_definition_count())
 
 
 ## Create starting inventory for a new player
@@ -138,11 +59,19 @@ func create_starter_loadout() -> Dictionary:
 	var shirt_stack := item_registry.create_item_stack("cloth_shirt", 1, 1.0)
 	var pants_stack := item_registry.create_item_stack("cloth_pants", 1, 1.0)
 
-	# Add to inventory
+	# Add to inventory and track indices for hotbar
 	inventory.add_stack(pickaxe_stack)
+	var pickaxe_idx := inventory.get_stack_count() - 1
+
 	inventory.add_stack(axe_stack)
+	var axe_idx := inventory.get_stack_count() - 1
+
 	inventory.add_stack(sword_stack)
+	var sword_idx := inventory.get_stack_count() - 1
+
 	inventory.add_stack(potions_stack)
+	var potions_idx := inventory.get_stack_count() - 1
+
 	inventory.add_stack(shirt_stack)
 	inventory.add_stack(pants_stack)
 
@@ -152,11 +81,11 @@ func create_starter_loadout() -> Dictionary:
 	if pants_stack != null and pants_stack.item != null:
 		equipment.equip(pants_stack.item)
 
-	# Assign tools to hotbar
-	hotbar.set_slot(0, pickaxe_stack)
-	hotbar.set_slot(1, axe_stack)
-	hotbar.set_slot(2, sword_stack)
-	hotbar.set_slot(3, potions_stack)
+	# Assign tools to hotbar with inventory indices for reliable sync
+	hotbar.set_slot(0, pickaxe_stack, pickaxe_idx)
+	hotbar.set_slot(1, axe_stack, axe_idx)
+	hotbar.set_slot(2, sword_stack, sword_idx)
+	hotbar.set_slot(3, potions_stack, potions_idx)
 
 	return {
 		"inventory": inventory,

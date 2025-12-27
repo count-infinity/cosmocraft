@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3 uid="uid://dqn3g8kl2fmhy"]
+
+[ext_resource type="Script" path="res://client/ui/stats_panel.gd" id="1_stats"]
+
+[node name="StatsPanel" type="PanelContainer"]
+custom_minimum_size = Vector2(320, 420)
+script = ExtResource("1_stats")

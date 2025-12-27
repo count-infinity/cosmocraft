@@ -5,6 +5,9 @@ const InventoryPanelClass = preload("res://client/ui/inventory_panel.gd")
 const EquipmentPanelClass = preload("res://client/ui/equipment_panel.gd")
 const HotbarUIClass = preload("res://client/ui/hotbar_ui.gd")
 const ItemTooltipClass = preload("res://client/ui/item_tooltip.gd")
+const CraftingPanelClass = preload("res://client/ui/crafting_panel.gd")
+const StatsPanelClass = preload("res://client/ui/stats_panel.gd")
+const HealthBarClass = preload("res://client/ui/health_bar.gd")
 
 var player_count_label: Label
 var ping_label: Label
@@ -22,11 +25,21 @@ var inventory_panel: InventoryPanelClass = null
 var equipment_panel: EquipmentPanelClass = null
 var hotbar_ui: HotbarUIClass = null
 var item_tooltip: ItemTooltipClass = null
+var crafting_panel: CraftingPanelClass = null
+var stats_panel: StatsPanelClass = null
+var health_bar: HealthBarClass = null
 
 var InventoryPanelScene: PackedScene = preload("res://client/ui/inventory_panel.tscn")
 var EquipmentPanelScene: PackedScene = preload("res://client/ui/equipment_panel.tscn")
 var HotbarScene: PackedScene = preload("res://client/ui/hotbar_ui.tscn")
 var TooltipScene: PackedScene = preload("res://client/ui/item_tooltip.tscn")
+var CraftingPanelScene: PackedScene = preload("res://client/ui/crafting_panel.tscn")
+var StatsPanelScene: PackedScene = preload("res://client/ui/stats_panel.tscn")
+var HealthBarScene: PackedScene = preload("res://client/ui/health_bar.tscn")
+
+# Death overlay
+var death_overlay: ColorRect = null
+var death_label: Label = null
 
 # Reference to game client
 var _game_client: GameClient = null
@@ -68,7 +81,7 @@ func _create_ui() -> void:
 	vbox.add_child(minimap_hint_label)
 
 	keybind_hint_label = Label.new()
-	keybind_hint_label.text = "[I/Tab] Inventory  [C] Equipment"
+	keybind_hint_label.text = "[I/Tab] Inventory  [C] Equipment  [K] Crafting  [P] Stats"
 	keybind_hint_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.7))
 	keybind_hint_label.add_theme_font_size_override("font_size", 11)
 	vbox.add_child(keybind_hint_label)
@@ -98,6 +111,17 @@ func _create_inventory_ui() -> void:
 	item_tooltip.z_index = 100  # Ensure tooltip is on top
 	add_child(item_tooltip)
 
+	# Create health bar (top-left, below info panel)
+	health_bar = HealthBarScene.instantiate()
+	var health_anchor := Control.new()
+	health_anchor.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	health_anchor.position = Vector2(10, 130)  # Below the info panel
+	add_child(health_anchor)
+	health_anchor.add_child(health_bar)
+
+	# Create death overlay (hidden by default, full screen)
+	_create_death_overlay()
+
 	# Create inventory panel (hidden by default, centered)
 	inventory_panel = InventoryPanelScene.instantiate()
 	inventory_panel.visible = false
@@ -124,6 +148,24 @@ func _create_inventory_ui() -> void:
 	add_child(hotbar_anchor)
 	hotbar_anchor.add_child(hotbar_ui)
 
+	# Create crafting panel (hidden by default, centered)
+	crafting_panel = CraftingPanelScene.instantiate()
+	crafting_panel.visible = false
+	var craft_anchor := Control.new()
+	craft_anchor.set_anchors_preset(Control.PRESET_CENTER)
+	craft_anchor.position = Vector2(-300, -200)
+	add_child(craft_anchor)
+	craft_anchor.add_child(crafting_panel)
+
+	# Create stats panel (hidden by default, left of center)
+	stats_panel = StatsPanelScene.instantiate()
+	stats_panel.visible = false
+	var stats_anchor := Control.new()
+	stats_anchor.set_anchors_preset(Control.PRESET_CENTER)
+	stats_anchor.position = Vector2(-460, -210)
+	add_child(stats_anchor)
+	stats_anchor.add_child(stats_panel)
+
 
 ## Initialize HUD with game client for inventory data
 func initialize_game_client(game_client: GameClient) -> void:
@@ -139,6 +181,18 @@ func initialize_game_client(game_client: GameClient) -> void:
 	if hotbar_ui != null:
 		hotbar_ui.initialize(game_client, item_tooltip)
 
+	if crafting_panel != null:
+		crafting_panel.initialize(game_client, item_tooltip)
+
+	if stats_panel != null:
+		stats_panel.initialize(game_client)
+
+	# Initialize health bar
+	if health_bar != null:
+		health_bar.initialize(game_client)
+		health_bar.player_died.connect(_on_player_died)
+		health_bar.player_respawned.connect(_on_player_respawned)
+
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -151,6 +205,12 @@ func _input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 			KEY_C:
 				toggle_equipment()
+				get_viewport().set_input_as_handled()
+			KEY_K:
+				toggle_crafting()
+				get_viewport().set_input_as_handled()
+			KEY_P:
+				toggle_stats()
 				get_viewport().set_input_as_handled()
 
 
@@ -173,6 +233,31 @@ func toggle_equipment() -> void:
 		equipment_panel.visible = not equipment_panel.visible
 		# Hide tooltip when closing
 		if not equipment_panel.visible and item_tooltip:
+			item_tooltip.hide()
+
+
+func toggle_crafting() -> void:
+	if crafting_panel:
+		crafting_panel.visible = not crafting_panel.visible
+		# Hide tooltip when closing
+		if not crafting_panel.visible and item_tooltip:
+			item_tooltip.hide()
+
+
+func toggle_stats() -> void:
+	if stats_panel:
+		stats_panel.visible = not stats_panel.visible
+
+
+func show_crafting() -> void:
+	if crafting_panel:
+		crafting_panel.visible = true
+
+
+func hide_crafting() -> void:
+	if crafting_panel:
+		crafting_panel.visible = false
+		if item_tooltip:
 			item_tooltip.hide()
 
 
@@ -200,6 +285,16 @@ func hide_equipment() -> void:
 			item_tooltip.hide()
 
 
+func show_stats() -> void:
+	if stats_panel:
+		stats_panel.visible = true
+
+
+func hide_stats() -> void:
+	if stats_panel:
+		stats_panel.visible = false
+
+
 func initialize_minimap(chunk_manager: ChunkManager) -> void:
 	if minimap:
 		minimap.initialize(chunk_manager)
@@ -218,3 +313,37 @@ func update_position(pos: Vector2) -> void:
 	# Update minimap with player position
 	if minimap and _minimap_visible:
 		minimap.update_player_position(pos)
+
+
+# =============================================================================
+# Death overlay
+# =============================================================================
+
+func _create_death_overlay() -> void:
+	# Full screen semi-transparent overlay
+	death_overlay = ColorRect.new()
+	death_overlay.color = Color(0.0, 0.0, 0.0, 0.7)
+	death_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	death_overlay.visible = false
+	death_overlay.z_index = 90  # Below tooltips, above everything else
+	add_child(death_overlay)
+
+	# "YOU DIED" message
+	death_label = Label.new()
+	death_label.text = "YOU DIED\n\nRespawning..."
+	death_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	death_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	death_label.add_theme_font_size_override("font_size", 48)
+	death_label.add_theme_color_override("font_color", Color(0.9, 0.2, 0.2))
+	death_label.set_anchors_preset(Control.PRESET_FULL_RECT)
+	death_overlay.add_child(death_label)
+
+
+func _on_player_died() -> void:
+	if death_overlay != null:
+		death_overlay.visible = true
+
+
+func _on_player_respawned() -> void:
+	if death_overlay != null:
+		death_overlay.visible = false

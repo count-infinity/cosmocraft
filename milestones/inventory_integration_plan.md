@@ -161,89 +161,107 @@ Connect the existing inventory/equipment/crafting systems (6,000+ lines, 425 tes
 
 ---
 
-## Phase 6: Ground Items & Pickup (8-10 hours)
+## Phase 6: Ground Items & Pickup (8-10 hours) - COMPLETE
 
 ### 6.1 WorldItem Entity
-- [ ] Create `shared/world/world_item.gd`:
-  - [ ] Unique ID
-  - [ ] ItemStack data
-  - [ ] World position
-  - [ ] Spawn time (for despawn timer)
-  - [ ] Owner ID (for loot protection)
-  - [ ] to_dict() / from_dict()
+- [x] Create `shared/world/world_item.gd`:
+  - [x] Unique ID
+  - [x] ItemStack data
+  - [x] World position
+  - [x] Spawn time (for despawn timer)
+  - [x] Owner ID (for loot protection)
+  - [x] to_dict() / from_dict()
 
 ### 6.2 Server Ground Item Management
-- [ ] Modify `server/game_state.gd`:
-  - [ ] Add `ground_items: Dictionary` (id -> WorldItem)
-  - [ ] Add `spawn_item(item_stack, position, owner_id)`
-  - [ ] Add `remove_item(item_id)`
-  - [ ] Add despawn timer (5 minutes?)
-  - [ ] Broadcast new items to nearby players
+- [x] Modify `server/game_state.gd`:
+  - [x] Add `ground_items: Dictionary` (id -> WorldItem)
+  - [x] Add `spawn_item(item_stack, position, owner_id)`
+  - [x] Add `remove_item(item_id)`
+  - [x] Add despawn timer (5 minutes)
+  - [x] Broadcast new items to nearby players
 
 ### 6.3 Item Drop Flow
-- [ ] Server: On ITEM_DROP_REQUEST:
-  - [ ] Validate player has item
-  - [ ] Remove from player inventory
-  - [ ] Spawn WorldItem at player position
-  - [ ] Broadcast to nearby players
+- [x] Server: On ITEM_DROP_REQUEST:
+  - [x] Validate player has item
+  - [x] Remove from player inventory
+  - [x] Spawn WorldItem at player position
+  - [x] Broadcast to nearby players
 
 ### 6.4 Item Pickup Flow
-- [ ] Client: Detect nearby items (collision or key press)
-- [ ] Client: Send ITEM_PICKUP_REQUEST
-- [ ] Server: Validate item exists and player in range
-- [ ] Server: Check inventory space/weight
-- [ ] Server: Add to player inventory, remove from world
-- [ ] Server: Send ITEM_PICKUP_RESPONSE
+- [x] Client: Detect nearby items (E or F key press)
+- [x] Client: Send ITEM_PICKUP_REQUEST
+- [x] Server: Validate item exists and player in range
+- [x] Server: Check inventory space/weight
+- [x] Server: Add to player inventory, remove from world
+- [x] Server: Send ITEM_PICKUP_RESPONSE
 
 ### 6.5 Client Ground Item Rendering
-- [ ] Create `client/world/world_item_visual.gd` and `.tscn`:
-  - [ ] Sprite for item
-  - [ ] Bobbing animation
-  - [ ] Glow based on quality
-  - [ ] Label with item name
+- [x] Create `client/world/world_item_visual.gd`:
+  - [x] Colored rectangle sprite (placeholder)
+  - [x] Bobbing animation
+  - [x] Glow based on quality/tier
+  - [x] Label with item name
 
 ---
 
-## Phase 7: Crafting UI (6-8 hours)
+## Phase 7: Crafting UI (6-8 hours) - COMPLETE
 
 ### 7.1 Crafting Panel
-- [ ] Create `client/ui/crafting_panel.gd` and `.tscn`:
-  - [ ] List of available recipes (discovered only)
-  - [ ] Filter by category
-  - [ ] Search by name
-  - [ ] Show recipe details on select
+- [x] Create `client/ui/crafting_panel.gd` and `.tscn`:
+  - [x] List of available recipes (discovered only)
+  - [x] Filter by category
+  - [x] Search by name
+  - [x] Show recipe details on select
 
 ### 7.2 Recipe Display
-- [ ] Show required materials with have/need counts
-- [ ] Show required station (if any)
-- [ ] Show required skill level
-- [ ] Show output item(s) with quality preview
-- [ ] Craft button (disabled if can't craft)
+- [x] Show required materials with have/need counts
+- [x] Show required station (if any)
+- [x] Show required skill level
+- [x] Show output item(s) with quality preview
+- [x] Craft button (disabled if can't craft)
 
 ### 7.3 Crafting Flow
-- [ ] Client: Send CRAFT_REQUEST(recipe_id)
-- [ ] Server: Validate materials, station, skill
-- [ ] Server: Consume materials
-- [ ] Server: Calculate quality
-- [ ] Server: Create output items
-- [ ] Server: Add to inventory
-- [ ] Server: Grant XP
-- [ ] Server: Send CRAFT_RESPONSE
+- [x] Client: Send CRAFT_REQUEST(recipe_id)
+- [x] Server: Validate materials, station, skill
+- [x] Server: Consume materials
+- [x] Server: Calculate quality
+- [x] Server: Create output items
+- [x] Server: Add to inventory
+- [x] Server: Grant XP
+- [x] Server: Send CRAFT_RESPONSE
 
 ---
 
-## Phase 8: Stats & Combat Integration (4-5 hours)
+## Phase 8: Stats & Combat Integration (4-5 hours) - COMPLETE
 
 ### 8.1 Stats Display
-- [ ] Create `client/ui/stats_panel.gd`:
-  - [ ] Show all stat values
-  - [ ] Show base + bonus breakdown
-  - [ ] Update on equipment/skill changes
+- [x] Create `client/ui/stats_panel.gd`:
+  - [x] Show all stat values organized by category (Core, Attributes, Combat, Resistances)
+  - [x] Show base + bonus breakdown with color coding
+  - [x] Update on equipment/skill changes
+  - [x] Toggle with 'P' key via HUD
 
-### 8.2 Combat Integration (if combat exists)
-- [ ] Connect weapon stats to damage calculation
-- [ ] Connect armor stats to damage reduction
-- [ ] Connect tool stats to gathering efficiency
+### 8.2 Combat Integration
+- [x] Create `shared/combat/combat_calculator.gd`:
+  - [x] `calculate_melee_damage()` - Uses STRENGTH stat for damage bonus
+  - [x] `calculate_ranged_damage()` - Uses PRECISION stat for damage bonus
+  - [x] `calculate_damage_reduction()` - Uses FORTITUDE stat with diminishing returns
+  - [x] `calculate_crit()` - Uses CRIT_CHANCE and CRIT_DAMAGE stats
+  - [x] `calculate_attack_speed()` - Combines weapon and stat speed
+  - [x] `calculate_environmental_damage()` - Uses resistance stats
+
+### 8.3 Tool Efficiency Integration
+- [x] Create `shared/combat/tool_calculator.gd`:
+  - [x] `calculate_gathering_efficiency()` - Uses EFFICIENCY stat for bonus
+  - [x] `calculate_durability_use()` - EFFICIENCY reduces durability consumption
+  - [x] `can_harvest_tier()` - Check if tool can harvest material tier
+  - [x] `calculate_gather_time()` - Time based on efficiency
+  - [x] `calculate_bonus_drops()` - Uses LUCK stat for bonus drops
+  - [x] `get_mode_modifiers()` - Tool mode efficiency/durability tradeoffs
+
+### 8.4 Tests
+- [x] Create `tests/test_combat_calculator.gd` - Full test coverage for combat calculations
+- [x] Create `tests/test_tool_calculator.gd` - Full test coverage for tool calculations
 
 ---
 
@@ -288,9 +306,9 @@ Connect the existing inventory/equipment/crafting systems (6,000+ lines, 425 tes
 | 3. Server Initialization | 2-3 | Complete |
 | 4. Client Sync | 3-4 | Complete |
 | 5. Basic Inventory UI | 6-8 | Complete |
-| 6. Ground Items & Pickup | 8-10 | Not Started |
-| 7. Crafting UI | 6-8 | Not Started |
-| 8. Stats & Combat | 4-5 | Not Started |
+| 6. Ground Items & Pickup | 8-10 | Complete |
+| 7. Crafting UI | 6-8 | Complete |
+| 8. Stats & Combat | 4-5 | Complete |
 
 ---
 

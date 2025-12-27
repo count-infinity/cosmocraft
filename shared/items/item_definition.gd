@@ -59,6 +59,15 @@ extends Resource
 ## For weapons: attack speed multiplier (1.0 = normal)
 @export var attack_speed: float = 1.0
 
+## For weapons: weapon type (determines attack style and visuals)
+@export var weapon_type: ItemEnums.WeaponType = ItemEnums.WeaponType.NONE
+
+## For weapons: attack range in pixels
+@export var attack_range: float = 0.0
+
+## For weapons: attack arc in radians (for melee arc attacks)
+@export var attack_arc: float = 0.0
+
 ## For consumables: effects when used
 @export var use_effects: Dictionary = {}
 
@@ -122,6 +131,9 @@ func to_dict() -> Dictionary:
 		"harvest_tier": harvest_tier,
 		"base_damage": base_damage,
 		"attack_speed": attack_speed,
+		"weapon_type": weapon_type,
+		"attack_range": attack_range,
+		"attack_arc": attack_arc,
 		"use_effects": use_effects,
 		"primary_material": primary_material,
 	}
@@ -147,6 +159,9 @@ static func from_dict(data: Dictionary) -> ItemDefinition:
 	def.harvest_tier = data.get("harvest_tier", 0)
 	def.base_damage = data.get("base_damage", 0)
 	def.attack_speed = data.get("attack_speed", 1.0)
+	def.weapon_type = data.get("weapon_type", ItemEnums.WeaponType.NONE)
+	def.attack_range = data.get("attack_range", 0.0)
+	def.attack_arc = data.get("attack_arc", 0.0)
 	def.use_effects = data.get("use_effects", {})
 	def.primary_material = data.get("primary_material", "")
 

@@ -13,6 +13,14 @@ signal equip_requested(peer_id: int, inventory_slot: int, equip_slot: int)
 signal unequip_requested(peer_id: int, equip_slot: int)
 signal item_drop_requested(peer_id: int, slot: int, count: int)
 signal item_use_requested(peer_id: int, slot: int)
+signal item_pickup_requested(peer_id: int, world_item_id: String, position: Vector2)
+
+# Crafting signals
+signal craft_requested(peer_id: int, recipe_id: String)
+
+# Combat signals
+signal corpse_recover_requested(peer_id: int, corpse_id: String)
+signal attack_requested(peer_id: int, aim_position: Vector2, attack_type: int)
 
 # Process an incoming message from a client
 func handle_message(peer_id: int, json_string: String) -> void:
@@ -47,6 +55,16 @@ func handle_message(peer_id: int, json_string: String) -> void:
 			_handle_item_drop_request(peer_id, data)
 		MessageTypes.ITEM_USE_REQUEST:
 			_handle_item_use_request(peer_id, data)
+		MessageTypes.ITEM_PICKUP_REQUEST:
+			_handle_item_pickup_request(peer_id, data)
+		# Crafting messages
+		MessageTypes.CRAFT_REQUEST:
+			_handle_craft_request(peer_id, data)
+		# Combat messages
+		MessageTypes.CORPSE_RECOVER_REQUEST:
+			_handle_corpse_recover_request(peer_id, data)
+		MessageTypes.ATTACK_REQUEST:
+			_handle_attack_request(peer_id, data)
 		_:
 			printerr("ServerMessageHandler: Unknown message type '%s' from peer %d" % [msg_type, peer_id])
 
@@ -109,3 +127,37 @@ func _handle_item_use_request(peer_id: int, data: Dictionary) -> void:
 	var parsed := Serialization.parse_item_use_request(data)
 	var slot: int = parsed["slot"]
 	item_use_requested.emit(peer_id, slot)
+
+
+func _handle_item_pickup_request(peer_id: int, data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_item_pickup_request(data)
+	var world_item_id: String = parsed["item_id"]
+	var position: Vector2 = parsed["position"]
+	item_pickup_requested.emit(peer_id, world_item_id, position)
+
+
+# ===== Crafting Message Handlers =====
+
+func _handle_craft_request(peer_id: int, data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_craft_request(data)
+	var recipe_id: String = parsed["recipe_id"]
+	craft_requested.emit(peer_id, recipe_id)
+
+
+# ===== Combat Message Handlers =====
+
+func _handle_corpse_recover_request(peer_id: int, data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_corpse_recover_request(data)
+	var corpse_id: String = parsed["corpse_id"]
+	corpse_recover_requested.emit(peer_id, corpse_id)
+
+
+func _handle_attack_request(peer_id: int, data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_attack_request(data)
+	var aim_position: Vector2 = parsed["aim_position"]
+	var attack_type: int = parsed["attack_type"]
+	attack_requested.emit(peer_id, aim_position, attack_type)
