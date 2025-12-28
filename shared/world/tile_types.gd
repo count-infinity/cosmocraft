@@ -24,6 +24,8 @@ enum Type {
 	ICE = 16,
 	CACTUS = 17,
 	DEAD_BUSH = 18,
+	WATER_SHALLOW = 19,  # Near shores - lighter blue, faster movement
+	WATER_DEEP = 20,     # Far from shores - darker blue, slower movement
 	# Reserve space for more types
 	MAX = 4096
 }
@@ -152,6 +154,12 @@ static func _register_tiles() -> void:
 
 	# DEAD_BUSH - desert decoration
 	_register(Type.DEAD_BUSH, "Dead Bush", Flags.TRANSPARENT | Flags.FLAMMABLE, 0, 0, 0.95, 3)
+
+	# WATER_SHALLOW - near shores, faster than deep water
+	_register(Type.WATER_SHALLOW, "Shallow Water", Flags.LIQUID | Flags.TRANSPARENT, 0, 1, 0.7, 2)
+
+	# WATER_DEEP - far from shores, very slow
+	_register(Type.WATER_DEEP, "Deep Water", Flags.LIQUID | Flags.TRANSPARENT, 0, 4, 0.4, 2)
 
 
 static func _register(

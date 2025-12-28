@@ -13,6 +13,9 @@ var player_input: PlayerInput
 var prediction: ClientPrediction
 var attack_controller: AttackControllerScript
 
+# Reference to chunk manager for collision prediction
+var chunk_manager: ChunkManager = null
+
 # Visual elements
 var body: ColorRect
 var aim_indicator: Polygon2D
@@ -115,7 +118,16 @@ func _apply_input_locally(input_data: Dictionary, delta: float) -> void:
 
 	if move_dir.length() > 0:
 		var velocity := move_dir.normalized() * GameConstants.PLAYER_SPEED
-		current_position += velocity * delta
+		var movement := velocity * delta
+
+		# Apply movement with collision checking if chunk manager available
+		if chunk_manager != null:
+			current_position = CollisionHelper.apply_movement_with_collision(
+				current_position, movement, chunk_manager
+			)
+		else:
+			current_position += movement
+
 		_clamp_position()
 
 func _clamp_position() -> void:

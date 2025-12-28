@@ -37,6 +37,9 @@ const ROAM_TO_IDLE_CHANCE: float = 0.01  # ~1% chance to stop roaming
 ## Provides a buffer so enemies don't immediately lose interest at edge of range
 const AGGRO_DROP_MULTIPLIER: float = 1.5
 
+## Range at which pack members alert each other (in pixels)
+const PACK_ALERT_RANGE: float = 300.0
+
 
 ## Process AI for a single enemy
 ## delta: time since last tick
@@ -302,3 +305,62 @@ static func process_all(
 		# Clamp position to world bounds
 		enemy.position.x = clampf(enemy.position.x, 0, GameConstants.WORLD_WIDTH)
 		enemy.position.y = clampf(enemy.position.y, 0, GameConstants.WORLD_HEIGHT)
+
+
+## Alert nearby pack members when an enemy finds a target.
+## This function should be called after AI processing is complete.
+## Only alerts enemies of the same type that don't already have a target.
+static func alert_pack_members(
+	enemy_manager: RefCounted,
+	player_positions: Dictionary
+) -> void:
+	var alerted_enemies: Array = []
+
+	# Find all enemies that are chasing/attacking and could alert nearby pack members
+	for enemy in enemy_manager.get_alive_enemies():
+		if enemy.state != EnemyStateScript.State.CHASING and enemy.state != EnemyStateScript.State.ATTACKING:
+			continue
+
+		if enemy.target_id.is_empty():
+			continue
+
+		# This enemy has a target - alert nearby pack members
+		var alerts: Array = _get_pack_members_to_alert(enemy, enemy_manager)
+		for pack_member in alerts:
+			if pack_member not in alerted_enemies:
+				pack_member.set_target(enemy.target_id)
+				alerted_enemies.append(pack_member)
+
+
+## Get pack members near an enemy that should be alerted
+## Returns enemies of the same type that don't have a target
+static func _get_pack_members_to_alert(
+	alerting_enemy: RefCounted,
+	enemy_manager: RefCounted
+) -> Array:
+	var pack_members: Array = []
+	var alert_range_sq: float = PACK_ALERT_RANGE * PACK_ALERT_RANGE
+
+	for enemy in enemy_manager.get_alive_enemies():
+		# Skip self
+		if enemy.id == alerting_enemy.id:
+			continue
+
+		# Only alert same type (wolf alerts wolves, etc.)
+		if enemy.definition_id != alerting_enemy.definition_id:
+			continue
+
+		# Skip if already has a target
+		if not enemy.target_id.is_empty():
+			continue
+
+		# Skip if already chasing/attacking
+		if enemy.state == EnemyStateScript.State.CHASING or enemy.state == EnemyStateScript.State.ATTACKING:
+			continue
+
+		# Check distance
+		var dist_sq: float = enemy.position.distance_squared_to(alerting_enemy.position)
+		if dist_sq <= alert_range_sq:
+			pack_members.append(enemy)
+
+	return pack_members

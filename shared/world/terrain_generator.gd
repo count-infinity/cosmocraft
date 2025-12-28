@@ -35,10 +35,11 @@ func _init(seed: int = 0, size: Vector2i = Vector2i(8000, 8000)) -> void:
 
 func _setup_noise() -> void:
 	# Elevation noise - large scale terrain features
+	# Lower frequency = larger biomes (2.5x larger than before)
 	elevation_noise = FastNoiseLite.new()
 	elevation_noise.seed = planet_seed
 	elevation_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	elevation_noise.frequency = 0.002  # Large features
+	elevation_noise.frequency = 0.0008  # Was 0.002, now 2.5x larger
 	elevation_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	elevation_noise.fractal_octaves = 4
 	elevation_noise.fractal_lacunarity = 2.0
@@ -48,7 +49,7 @@ func _setup_noise() -> void:
 	temperature_noise = FastNoiseLite.new()
 	temperature_noise.seed = planet_seed + 1000
 	temperature_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	temperature_noise.frequency = 0.001
+	temperature_noise.frequency = 0.0004  # Was 0.001, now 2.5x larger
 	temperature_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	temperature_noise.fractal_octaves = 2
 
@@ -56,7 +57,7 @@ func _setup_noise() -> void:
 	moisture_noise = FastNoiseLite.new()
 	moisture_noise.seed = planet_seed + 2000
 	moisture_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
-	moisture_noise.frequency = 0.0015
+	moisture_noise.frequency = 0.0006  # Was 0.0015, now 2.5x larger
 	moisture_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	moisture_noise.fractal_octaves = 2
 
@@ -171,7 +172,16 @@ func _get_biome(elevation: float, temperature: float, moisture: float) -> Biome:
 func _get_base_tile(biome: Biome, elevation: float) -> int:
 	match biome:
 		Biome.OCEAN:
-			return TileTypes.Type.WATER
+			# Water depth based on elevation:
+			# -0.3 to -0.4 = shallow water (near shores)
+			# -0.4 to -0.6 = normal water
+			# < -0.6 = deep water
+			if elevation > -0.4:
+				return TileTypes.Type.WATER_SHALLOW
+			elif elevation < -0.6:
+				return TileTypes.Type.WATER_DEEP
+			else:
+				return TileTypes.Type.WATER
 		Biome.BEACH:
 			return TileTypes.Type.SAND
 		Biome.FOREST:
@@ -195,7 +205,9 @@ func _get_base_tile(biome: Biome, elevation: float) -> int:
 ## Add features (trees, rocks, etc.) based on position and biome
 func _add_features(x: int, y: int, base_tile: int, biome: Biome, elevation: float) -> int:
 	# Don't add features to water or special tiles
-	if base_tile == TileTypes.Type.WATER or base_tile == TileTypes.Type.ICE:
+	if base_tile == TileTypes.Type.WATER or base_tile == TileTypes.Type.ICE \
+		or base_tile == TileTypes.Type.WATER_SHALLOW \
+		or base_tile == TileTypes.Type.WATER_DEEP:
 		return base_tile
 
 	# Use feature noise for placement

@@ -125,7 +125,7 @@ func to_dict() -> Dictionary:
 ## Create from dictionary
 static func from_dict(data: Dictionary) -> Resource:
 	var script: GDScript = load("res://shared/entities/enemy_definition.gd")
-	var def := script.new()
+	var def: Resource = script.new()
 	def.id = data.get("id", "")
 	def.display_name = data.get("display_name", "")
 	def.description = data.get("description", "")

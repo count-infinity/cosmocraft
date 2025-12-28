@@ -37,7 +37,7 @@ var current_attack_type: AttackType = AttackType.MELEE
 var base_damage: float = 5.0
 
 ## Attacks per second (determines cooldown duration)
-var attack_speed: float = 1.0
+var attack_speed: float = 2.5
 
 ## Melee range or maximum ranged distance in pixels
 var attack_range: float = 50.0
@@ -52,7 +52,7 @@ const MELEE_PAUSE_DURATION: float = 0.15
 
 func _init(
 	damage: float = 5.0,
-	speed: float = 1.0,
+	speed: float = 2.5,
 	attack_range_val: float = 50.0,
 	arc: float = 90.0
 ) -> void:
@@ -191,7 +191,7 @@ static func from_dict(data: Dictionary) -> RefCounted:
 	component.is_attacking = data.get("is_attacking", false)
 	component.current_attack_type = int(data.get("current_attack_type", AttackType.MELEE)) as AttackType
 	component.base_damage = float(data.get("base_damage", 5.0))
-	component.attack_speed = float(data.get("attack_speed", 1.0))
+	component.attack_speed = float(data.get("attack_speed", 2.5))
 	component.attack_range = float(data.get("attack_range", 50.0))
 	component.attack_arc = float(data.get("attack_arc", 90.0))
 	return component

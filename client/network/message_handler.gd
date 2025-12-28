@@ -374,8 +374,8 @@ func _handle_enemy_spawn(data: Dictionary) -> void:
 
 func _handle_enemy_update(data: Dictionary) -> void:
 	var enemy_id: String = data.get("id", "")
-	var state_data: Dictionary = data.get("state", data)  # Fallback to full data
-	enemy_update_received.emit(enemy_id, state_data)
+	# Pass the full data dictionary - contains position, velocity, current_hp, state
+	enemy_update_received.emit(enemy_id, data)
 
 
 func _handle_enemy_death(data: Dictionary) -> void:

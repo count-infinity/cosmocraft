@@ -722,9 +722,14 @@ static func parse_entity_died(data: Dictionary) -> Dictionary:
 # ===== Enemy Network Messages =====
 
 # Encode an enemy spawn message (server -> client)
-# Sends the full EnemyState for a newly spawned enemy
-static func encode_enemy_spawn(enemy_state: EnemyStateScript) -> String:
-	return encode_message(MessageTypes.ENEMY_SPAWN, enemy_state.to_dict())
+# Sends the full EnemyState and optional EnemyDefinition for a newly spawned enemy
+static func encode_enemy_spawn(enemy_state: EnemyStateScript, definition: Resource = null) -> String:
+	var data := {
+		"enemy": enemy_state.to_dict()
+	}
+	if definition != null:
+		data["definition"] = definition.to_dict()
+	return encode_message(MessageTypes.ENEMY_SPAWN, data)
 
 
 # Parse an enemy spawn message

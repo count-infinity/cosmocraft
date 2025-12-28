@@ -6,6 +6,9 @@ const PlayerCorpseScript = preload("res://shared/entities/player_corpse.gd")
 const CombatComponentScript = preload("res://shared/components/combat_component.gd")
 const AttackResolverScript = preload("res://server/combat/attack_resolver.gd")
 const HealthComponentScript = preload("res://shared/components/health_component.gd")
+const EnemyManagerScript = preload("res://server/enemies/enemy_manager.gd")
+const EnemyAIScript = preload("res://server/enemies/enemy_ai.gd")
+const CombatProcessorScript = preload("res://server/combat/combat_processor.gd")
 
 signal server_started(port: int)
 signal server_stopped()
@@ -47,6 +50,9 @@ var _player_corpses: Dictionary = {}  # corpse_id -> PlayerCorpseScript
 var _player_health_components: Dictionary = {}  # player_id -> HealthComponentScript
 var _player_combat_components: Dictionary = {}  # player_id -> CombatComponent
 
+# Enemy system
+var _enemy_manager: RefCounted  # EnemyManager
+
 # Combat constants
 const RESPAWN_INVULNERABILITY_DURATION: float = 2.0  # Seconds of invuln after respawn
 const CORPSE_RECOVERY_RANGE: float = 64.0  # Pixels - distance to recover corpse
@@ -54,22 +60,30 @@ const HP_REGEN_RATE: float = 5.0  # HP per second when out of combat
 
 # Default weapon stats (unarmed combat)
 const DEFAULT_ATTACK_DAMAGE: float = 5.0
-const DEFAULT_ATTACK_SPEED: float = 1.0  # Attacks per second
+const DEFAULT_ATTACK_SPEED: float = 2.5  # Attacks per second (0.4s cooldown)
 const DEFAULT_ATTACK_RANGE: float = 50.0  # Melee range in pixels
 const DEFAULT_ATTACK_ARC: float = 90.0  # Melee swing arc in degrees
 
 func _init() -> void:
 	config = ServerConfig.from_args()
 	game_state = GameState.new()
-	game_loop = GameLoop.new(game_state)
 	message_handler = ServerMessageHandler.new()
 
 	# Initialize planet with random seed
 	planet_seed = randi()
 	chunk_manager = ChunkManager.new(planet_seed, planet_size)
 
+	# Create game loop with chunk manager for collision checking
+	game_loop = GameLoop.new(game_state, chunk_manager)
+
 	# Initialize inventory registries
 	registries = ServerRegistriesScript.new()
+
+	# Initialize enemy system
+	_enemy_manager = EnemyManagerScript.new(registries.enemy_registry)
+	# EnemyAI is a stateless utility class - we just reference the script
+	_enemy_manager.enemy_spawned.connect(_on_enemy_spawned)
+	_enemy_manager.enemy_died.connect(_on_enemy_died)
 
 	# Connect message handler signals
 	message_handler.player_connect_requested.connect(_on_player_connect_requested)
@@ -112,6 +126,10 @@ func start_server() -> bool:
 
 	_running = true
 	print("GameServer: Server started on port %d" % config.port)
+
+	# Spawn test enemies near spawn point for combat testing
+	_spawn_test_enemies()
+
 	server_started.emit(config.port)
 	return true
 
@@ -312,6 +330,9 @@ func _on_player_connect_requested(peer_id: int, player_name: String) -> void:
 	# Send existing ground items near the player
 	_send_nearby_ground_items(peer_id, player.position)
 
+	# Send existing enemies to the player
+	_send_enemies_to_peer(peer_id)
+
 	# Notify other players
 	_broadcast_except(peer_id, Serialization.encode_player_joined(player))
 
@@ -339,6 +360,9 @@ func _on_player_disconnect_requested(peer_id: int) -> void:
 	_disconnect_peer(peer_id)
 
 func _on_tick_completed(_tick: int) -> void:
+	# Process enemy AI and combat
+	_process_enemies()
+
 	# Broadcast state delta to all connected players
 	_broadcast_state_delta()
 
@@ -464,7 +488,6 @@ func _initialize_player_inventory(player_id: String, player: PlayerState) -> voi
 	_player_health_components[player_id] = health
 
 	# Initialize combat component with default stats
-	# TODO: Update when weapons are equipped to use weapon stats
 	var combat := CombatComponentScript.new(
 		DEFAULT_ATTACK_DAMAGE,
 		DEFAULT_ATTACK_SPEED,
@@ -472,6 +495,9 @@ func _initialize_player_inventory(player_id: String, player: PlayerState) -> voi
 		DEFAULT_ATTACK_ARC
 	)
 	_player_combat_components[player_id] = combat
+
+	# Update combat stats if player already has a weapon equipped
+	_update_player_weapon_stats(player_id)
 
 	# Serialize to PlayerState for network sync
 	player.inventory = inventory.to_dict()
@@ -511,6 +537,46 @@ func _sync_player_inventory_to_state(player_id: String) -> void:
 		player.hotbar = _player_hotbars[player_id].to_dict()
 
 
+## Update combat component with equipped weapon stats
+func _update_player_weapon_stats(player_id: String) -> void:
+	if not _player_equipment.has(player_id) or not _player_combat_components.has(player_id):
+		return
+
+	var equipment: EquipmentSlots = _player_equipment[player_id]
+	var combat: CombatComponentScript = _player_combat_components[player_id]
+	var weapon: ItemInstance = equipment.get_equipped(ItemEnums.EquipSlot.MAIN_HAND)
+
+	if weapon != null and weapon.definition != null:
+		# Get weapon stats from definition
+		var damage: float = float(weapon.definition.base_damage)
+		var speed: float = weapon.definition.attack_speed if weapon.definition.attack_speed > 0 else DEFAULT_ATTACK_SPEED
+		var weapon_range: float = weapon.definition.attack_range if weapon.definition.attack_range > 0 else DEFAULT_ATTACK_RANGE
+		var arc: float = weapon.definition.attack_arc if weapon.definition.attack_arc > 0 else DEFAULT_ATTACK_ARC
+
+		# Determine attack type from weapon
+		var attack_type_int: int = AttackTypes.from_weapon_type(weapon.definition.weapon_type)
+		var combat_attack_type: CombatComponentScript.AttackType
+		if AttackTypes.is_ranged(attack_type_int):
+			combat_attack_type = CombatComponentScript.AttackType.RANGED
+		else:
+			combat_attack_type = CombatComponentScript.AttackType.MELEE
+
+		combat.configure_from_weapon(damage, speed, weapon_range, arc, combat_attack_type)
+		print("GameServer: Updated combat stats for %s - Damage: %.1f, Speed: %.1f, Range: %.1f" % [
+			player_id, damage, speed, weapon_range
+		])
+	else:
+		# No weapon equipped - reset to unarmed defaults
+		combat.configure_from_weapon(
+			DEFAULT_ATTACK_DAMAGE,
+			DEFAULT_ATTACK_SPEED,
+			DEFAULT_ATTACK_RANGE,
+			DEFAULT_ATTACK_ARC,
+			CombatComponentScript.AttackType.MELEE
+		)
+		print("GameServer: Reset to unarmed combat stats for %s" % player_id)
+
+
 ## Handle equip request from client
 func _on_equip_requested(peer_id: int, inventory_slot: int, equip_slot: int) -> void:
 	if not _peer_to_player.has(peer_id):
@@ -529,11 +595,6 @@ func _on_equip_requested(peer_id: int, inventory_slot: int, equip_slot: int) -> 
 		_send_to_peer(peer_id, Serialization.encode_error("Invalid inventory slot"))
 		return
 
-	# Validate equip slot is a valid enum value (NONE=0 through ACCESSORY=7)
-	if equip_slot < 0 or equip_slot > ItemEnums.EquipSlot.ACCESSORY:
-		_send_to_peer(peer_id, Serialization.encode_error("Invalid equipment slot"))
-		return
-
 	# Get the stack at the inventory slot
 	var stack := inventory.get_stack_at(inventory_slot)
 	if stack == null or stack.is_empty():
@@ -550,7 +611,17 @@ func _on_equip_requested(peer_id: int, inventory_slot: int, equip_slot: int) -> 
 		_send_to_peer(peer_id, Serialization.encode_error("Item cannot be equipped"))
 		return
 
-	# Equip the item (returns previously equipped item)
+	# Handle auto-detect equip slot (-1 means use item's default slot)
+	var target_slot: int = equip_slot
+	if target_slot == -1:
+		target_slot = item.definition.equip_slot
+
+	# Validate equip slot is a valid enum value (NONE=0 through ACCESSORY=7)
+	if target_slot < 0 or target_slot > ItemEnums.EquipSlot.ACCESSORY:
+		_send_to_peer(peer_id, Serialization.encode_error("Invalid equipment slot"))
+		return
+
+	# Equip the item (uses item's default slot)
 	var previous := equipment.equip(item)
 
 	# Remove item from inventory
@@ -563,6 +634,9 @@ func _on_equip_requested(peer_id: int, inventory_slot: int, equip_slot: int) -> 
 
 	# Sync to PlayerState
 	_sync_player_inventory_to_state(player_id)
+
+	# Update combat component with new weapon stats
+	_update_player_weapon_stats(player_id)
 
 	# Send updates to client
 	var player := game_state.get_player(player_id)
@@ -613,6 +687,9 @@ func _on_unequip_requested(peer_id: int, equip_slot: int) -> void:
 
 	# Sync to PlayerState
 	_sync_player_inventory_to_state(player_id)
+
+	# Update combat component (may revert to unarmed if weapon was unequipped)
+	_update_player_weapon_stats(player_id)
 
 	# Send updates to client
 	var player := game_state.get_player(player_id)
@@ -1243,12 +1320,20 @@ func _get_all_attackable_entities(attacker_id: String) -> Array:
 		var target := AttackResolverScript.create_target_from_player(other_id, other_player.position)
 		targets.append(target)
 
-	# TODO: Add enemies when enemy system is implemented
-	# for enemy_id in _enemies:
-	#     var enemy := _enemies[enemy_id]
-	#     if enemy.is_alive:
-	#         var target := AttackResolverScript.create_target_from_enemy(...)
-	#         targets.append(target)
+	# Add all attackable enemies
+	var enemy_registry: RefCounted = _enemy_manager.get_registry()
+	for enemy in _enemy_manager.get_all_enemies():
+		if not enemy.is_alive:
+			continue
+
+		# Get hitbox radius from definition
+		var definition: Resource = enemy_registry.get_definition(enemy.definition_id)
+		var hitbox_radius: float = 16.0  # Default
+		if definition != null:
+			hitbox_radius = definition.hitbox_radius
+
+		var target := AttackResolverScript.create_target_from_enemy(enemy.id, enemy.position, hitbox_radius)
+		targets.append(target)
 
 	return targets
 
@@ -1273,10 +1358,8 @@ func _is_player_entity(entity_id: String) -> bool:
 
 
 ## Check if an entity ID belongs to an enemy
-func _is_enemy_entity(_entity_id: String) -> bool:
-	# TODO: Implement when enemy system is ready
-	# return _enemies.has(entity_id)
-	return false
+func _is_enemy_entity(entity_id: String) -> bool:
+	return _enemy_manager.has_enemy(entity_id)
 
 
 ## Find all valid targets for an attack
@@ -1319,34 +1402,49 @@ func _apply_attack_damage(
 ) -> Dictionary:
 	var target_id: String = hit.target_id
 
-	# Get target's health component (works for both players and enemies)
-	var target_health: HealthComponentScript = _get_entity_health(target_id)
-	if target_health == null:
-		return {}
-
 	# Calculate damage (using base damage for now)
 	# TODO: Use CombatCalculator when weapons have full stats
 	var damage: float = combat.base_damage
 	var is_crit: bool = false  # TODO: Implement crit chance
 
-	# Apply damage
-	var current_time := Time.get_unix_time_from_system()
-	var actual_damage: float = target_health.take_damage(damage, current_time, attacker_id)
+	var actual_damage: float = 0.0
+	var remaining_hp: float = 0.0
 
-	if actual_damage <= 0.0:
-		return {}
-
-	# Handle entity-type-specific updates
+	# Handle player targets (using HealthComponent)
 	if _is_player_entity(target_id):
+		var target_health: HealthComponentScript = _get_entity_health(target_id)
+		if target_health == null:
+			return {}
+
+		var current_time := Time.get_unix_time_from_system()
+		actual_damage = target_health.take_damage(damage, current_time, attacker_id)
+
+		if actual_damage <= 0.0:
+			return {}
+
+		remaining_hp = target_health.current_hp
 		_update_player_after_damage(target_id, target_health, attacker_id)
+
+	# Handle enemy targets (using EnemyState.take_damage via EnemyManager)
 	elif _is_enemy_entity(target_id):
-		_update_enemy_after_damage(target_id, target_health, attacker_id)
+		actual_damage = _enemy_manager.damage_enemy(target_id, damage, attacker_id)
+
+		if actual_damage <= 0.0:
+			return {}
+
+		var enemy = _enemy_manager.get_enemy(target_id)
+		if enemy != null:
+			remaining_hp = enemy.current_hp
+		# Note: EnemyManager handles the damaged/died signals internally
+
+	else:
+		return {}
 
 	return {
 		"target_id": target_id,
 		"damage": actual_damage,
 		"is_crit": is_crit,
-		"remaining_hp": target_health.current_hp
+		"remaining_hp": remaining_hp
 	}
 
 
@@ -1362,14 +1460,8 @@ func _update_player_after_damage(player_id: String, health: HealthComponentScrip
 		_handle_player_death(player_id, attacker_id)
 
 
-## Update enemy state after taking damage
-## TODO: Implement when enemy system is ready
-func _update_enemy_after_damage(_enemy_id: String, _health: HealthComponentScript, _attacker_id: String) -> void:
-	pass
-	# var enemy := _enemies[enemy_id]
-	# enemy.current_hp = health.current_hp
-	# if health.is_dead:
-	#     _handle_enemy_death(enemy_id, attacker_id)
+## Note: Enemy damage is now handled directly in _apply_attack_damage via EnemyManager.damage_enemy()
+## The EnemyManager's _on_enemy_damaged and _on_enemy_died callbacks handle retaliation and death
 
 
 ## Broadcast entity damage to all players
@@ -1394,3 +1486,166 @@ func _broadcast_entity_damaged(hit_data: Dictionary, attacker_id: String) -> voi
 		max_hp,
 		attacker_id
 	))
+
+
+# =============================================================================
+# Enemy System Integration
+# =============================================================================
+
+## Process enemy AI and combat each tick
+func _process_enemies() -> void:
+	var delta: float = GameConstants.TICK_INTERVAL
+	var current_time: float = Time.get_unix_time_from_system()
+
+	# Build player positions for AI
+	var player_positions: Dictionary = {}
+	for player_id in game_state.players:
+		var player: PlayerState = game_state.players[player_id]
+		if not player.is_dead:
+			player_positions[player_id] = player.position
+
+	# Process AI for all enemies (movement, state transitions, attack timing)
+	_process_enemy_ai(delta, current_time, player_positions)
+
+	# Process enemy attacks (damage dealing)
+	_process_enemy_combat(current_time, player_positions)
+
+	# Process respawns
+	_enemy_manager.process_respawns(current_time)
+
+	# Broadcast enemy state updates
+	_broadcast_enemy_updates()
+
+
+## Process AI for all enemies
+func _process_enemy_ai(delta: float, current_time: float, player_positions: Dictionary) -> void:
+	# Use the EnemyAI static methods to process each enemy
+	for enemy in _enemy_manager.get_alive_enemies():
+		var definition = _enemy_manager.get_registry().get_definition(enemy.definition_id)
+		if definition == null:
+			continue
+
+		var movement: Vector2 = EnemyAIScript.process_enemy(
+			enemy, delta, current_time, player_positions, definition
+		)
+
+		# Apply movement with collision checking
+		if movement.length_squared() > 0:
+			if chunk_manager != null:
+				enemy.position = CollisionHelper.apply_movement_with_collision(
+					enemy.position, movement, chunk_manager
+				)
+			else:
+				enemy.position += movement
+
+		# Clamp to world bounds
+		enemy.position.x = clampf(enemy.position.x, 0, GameConstants.WORLD_WIDTH)
+		enemy.position.y = clampf(enemy.position.y, 0, GameConstants.WORLD_HEIGHT)
+
+	# Alert pack members - wolves that detect a player will alert nearby wolves
+	EnemyAIScript.alert_pack_members(_enemy_manager, player_positions)
+
+
+## Process enemy attacks and apply damage to players
+func _process_enemy_combat(current_time: float, player_positions: Dictionary) -> void:
+	var attack_results: Array = CombatProcessorScript.process_enemy_attacks(
+		_enemy_manager,
+		player_positions,
+		_player_health_components,
+		current_time
+	)
+
+	# Handle attack results
+	for result in attack_results:
+		var target_id: String = result.target_id
+		var damage: float = result.damage
+
+		# Update player state from health component
+		if _player_health_components.has(target_id):
+			var health: HealthComponentScript = _player_health_components[target_id]
+			var player := game_state.get_player(target_id)
+			if player != null:
+				player.current_hp = health.current_hp
+				player.last_damage_time = health.last_damage_time
+
+				# Send damage update to target
+				if _player_to_peer.has(target_id):
+					var peer_id: int = _player_to_peer[target_id]
+					_send_to_peer(peer_id, Serialization.encode_health_update(
+						target_id, health.current_hp, health.max_hp
+					))
+
+				# Broadcast damage to all players
+				_broadcast(Serialization.encode_entity_damaged(
+					target_id, damage, false, health.current_hp, health.max_hp, result.enemy_id
+				))
+
+				# Handle death
+				if health.is_dead:
+					_handle_player_death(target_id, result.enemy_id)
+
+
+## Broadcast enemy position/state updates to all players
+func _broadcast_enemy_updates() -> void:
+	for enemy in _enemy_manager.get_all_enemies():
+		# Send update for all alive enemies
+		if enemy.is_alive:
+			_broadcast(Serialization.encode_enemy_update(
+				enemy.id,
+				enemy.position,
+				enemy.velocity,
+				enemy.current_hp,
+				enemy.state
+			))
+
+
+## Spawn test enemies near the player spawn point for combat testing
+func _spawn_test_enemies() -> void:
+	# Player spawn point from GameConstants (512, 512)
+	var spawn_center := Vector2(GameConstants.PLAYER_SPAWN_X, GameConstants.PLAYER_SPAWN_Y)
+
+	# Spawn some rabbits nearby (passive, for target practice)
+	_enemy_manager.spawn_enemy("rabbit", spawn_center + Vector2(200, 100))
+	_enemy_manager.spawn_enemy("rabbit", spawn_center + Vector2(-150, 200))
+	_enemy_manager.spawn_enemy("rabbit", spawn_center + Vector2(100, -180))
+
+	# Spawn a wolf pack (aggressive, will chase player and alert pack members)
+	_enemy_manager.spawn_enemy("wolf", spawn_center + Vector2(350, 350))
+	_enemy_manager.spawn_enemy("wolf", spawn_center + Vector2(400, 320))
+	_enemy_manager.spawn_enemy("wolf", spawn_center + Vector2(380, 400))
+
+	print("GameServer: Spawned %d test enemies near player spawn" % _enemy_manager.get_enemy_count())
+
+
+## Send all existing enemies to a specific peer (on connect)
+func _send_enemies_to_peer(peer_id: int) -> void:
+	var all_enemies: Array = _enemy_manager.get_all_enemies()
+	for enemy_state in all_enemies:
+		var definition: Resource = registries.enemy_registry.get_definition(enemy_state.definition_id)
+		_send_to_peer(peer_id, Serialization.encode_enemy_spawn(enemy_state, definition))
+
+
+## Handle enemy spawned signal
+func _on_enemy_spawned(enemy_state: RefCounted) -> void:
+	# Get the definition to include in the spawn message
+	var definition: Resource = registries.enemy_registry.get_definition(enemy_state.definition_id)
+	# Broadcast to all connected players
+	_broadcast(Serialization.encode_enemy_spawn(enemy_state, definition))
+
+
+## Handle enemy died signal
+func _on_enemy_died(enemy_id: String, killer_id: String) -> void:
+	# Get the enemy before it might be removed
+	var enemy = _enemy_manager.get_enemy(enemy_id)
+	if enemy == null:
+		return
+
+	# Broadcast death to all players
+	_broadcast(Serialization.encode_enemy_death(enemy_id, killer_id, enemy.position, []))
+
+	# TODO: Generate loot drops from enemy's loot table
+	# var loot_table_id: String = enemy.definition_id + "_loot"
+	# if registries.loot_registry.has_table(loot_table_id):
+	#     var drops := registries.loot_generator.generate_loot(loot_table_id, enemy.position)
+	#     for drop in drops:
+	#         game_state.add_ground_item(drop)

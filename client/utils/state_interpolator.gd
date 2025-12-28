@@ -32,14 +32,21 @@ func add_state(state: Dictionary) -> void:
 
 
 ## Get the interpolated state at the current render time
-## Returns a Dictionary with interpolated values, or empty if no data
+## Returns a Dictionary with: older_state, newer_state, t, render_time
+## or empty if no data
 func get_interpolated_state() -> Dictionary:
 	if state_buffer.is_empty():
 		return {}
 
 	if state_buffer.size() < 2:
-		# Not enough data to interpolate, return latest
-		return state_buffer[0].duplicate()
+		# Not enough data to interpolate, return same state for both
+		var single_state: Dictionary = state_buffer[0]
+		return {
+			"older_state": single_state,
+			"newer_state": single_state,
+			"t": 0.0,
+			"render_time": Time.get_ticks_msec() / 1000.0
+		}
 
 	# Render time is current time minus delay
 	var render_time: float = Time.get_ticks_msec() / 1000.0 - render_delay

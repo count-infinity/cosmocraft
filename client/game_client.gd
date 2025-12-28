@@ -327,6 +327,10 @@ func _on_game_state(tick: int, players: Dictionary) -> void:
 				local_player.initialize(player_id, p_name, pos)
 				local_player.input_generated.connect(_on_local_player_input)
 				local_player.attack_requested.connect(_on_local_player_attack)
+				# Pass chunk manager for client-side collision prediction
+				if chunk_manager != null:
+					local_player.chunk_manager = chunk_manager
+					local_player.prediction.chunk_manager = chunk_manager
 				add_child(local_player)
 		else:
 			# Create or update remote player
@@ -417,6 +421,11 @@ func _on_planet_info(seed_val: int, size_x: int, size_y: int) -> void:
 
 		# Move renderer below players in z-order
 		world.move_child(chunk_renderer, 0)
+
+	# Pass chunk manager to local player for collision prediction
+	if local_player != null:
+		local_player.chunk_manager = chunk_manager
+		local_player.prediction.chunk_manager = chunk_manager
 
 	# Notify that chunk manager is ready (for minimap, etc.)
 	chunk_manager_ready.emit(chunk_manager)
@@ -931,7 +940,8 @@ func _on_enemy_spawn(enemy_data: Dictionary, definition_data: Dictionary) -> voi
 	# Create visual
 	_create_enemy_visual(enemy_data, definition_data)
 
-	print("GameClient: Enemy spawned: %s (%s)" % [enemy_id, def_id])
+	var pos_data: Dictionary = enemy_data.get("position", {})
+	print("GameClient: Enemy spawned: %s (%s) at (%s, %s)" % [enemy_id, def_id, pos_data.get("x", 0), pos_data.get("y", 0)])
 
 
 func _on_enemy_update(enemy_id: String, state_data: Dictionary) -> void:

@@ -4,6 +4,9 @@ extends RefCounted
 # Buffer of unacknowledged inputs: sequence -> {input_data, predicted_position}
 var input_buffer: Dictionary = {}
 
+# Reference to chunk manager for collision checking during reconciliation
+var chunk_manager: ChunkManager = null
+
 # Store an input and its predicted result
 func store_input(sequence: int, input_data: Dictionary, predicted_position: Vector2) -> void:
 	input_buffer[sequence] = {
@@ -50,7 +53,16 @@ func reconcile(server_position: Vector2, last_processed_sequence: int, delta: fl
 	for input_data in unacked:
 		var move_dir: Vector2 = input_data.get("move_direction", Vector2.ZERO)
 		var velocity := move_dir.normalized() * GameConstants.PLAYER_SPEED
-		position += velocity * delta
+		var movement := velocity * delta
+
+		# Apply movement with collision checking if chunk manager available
+		if chunk_manager != null:
+			position = CollisionHelper.apply_movement_with_collision(
+				position, movement, chunk_manager
+			)
+		else:
+			position += movement
+
 		position = _clamp_position(position)
 
 	return position

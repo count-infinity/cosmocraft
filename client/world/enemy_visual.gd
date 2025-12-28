@@ -210,6 +210,10 @@ func _on_death() -> void:
 	facing_indicator.visible = false
 	health_bar.hide_bar()
 
+	# Change name to "Corpse of X"
+	name_label.text = "Corpse of %s" % display_name
+	name_label.add_theme_color_override("font_color", COLOR_DEAD)
+
 	# Flash effect (brief white flash then fade)
 	_play_death_effect()
 
@@ -218,6 +222,9 @@ func _on_revive() -> void:
 	# Restore appearance
 	_update_appearance()
 	facing_indicator.visible = true
+
+	# Restore original name
+	name_label.text = display_name
 
 
 func _play_death_effect() -> void:

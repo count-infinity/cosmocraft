@@ -227,7 +227,7 @@ func test_attack_controller_unarmed_constants() -> void:
 	var controller := AttackControllerScript.new()
 
 	assert_eq(controller.UNARMED_DAMAGE, 5.0)
-	assert_eq(controller.UNARMED_SPEED, 1.0)
+	assert_eq(controller.UNARMED_SPEED, 2.5)
 	assert_eq(controller.UNARMED_RANGE, 50.0)
 	assert_eq(controller.UNARMED_ARC, 90.0)
 

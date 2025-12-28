@@ -31,7 +31,7 @@ var current_weapon_type: int = ItemEnums.WeaponType.NONE
 
 ## Unarmed/default combat stats constants
 const UNARMED_DAMAGE: float = 5.0
-const UNARMED_SPEED: float = 1.0
+const UNARMED_SPEED: float = 2.5  # 2.5 attacks per second = 0.4s cooldown
 const UNARMED_RANGE: float = 50.0
 const UNARMED_ARC: float = 90.0
 
@@ -66,6 +66,9 @@ func update(delta: float, current_aim_position: Vector2) -> void:
 
 	# Update cooldown
 	combat_component.tick(delta)
+
+	# Poll left mouse button directly (avoids UI input consumption issues)
+	is_attack_held = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
 
 	# Hold-to-attack: continuously attack while held and off cooldown
 	if is_attack_held and combat_component.can_attack() and attacks_enabled:

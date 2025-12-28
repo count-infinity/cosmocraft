@@ -38,7 +38,7 @@ func test_initial_state() -> void:
 func test_default_constructor() -> void:
 	var combat := CombatComponentScript.new()
 	assert_eq(combat.base_damage, 5.0)
-	assert_eq(combat.attack_speed, 1.0)
+	assert_eq(combat.attack_speed, 2.5)
 	assert_eq(combat.attack_range, 50.0)
 	assert_eq(combat.attack_arc, 90.0)
 
@@ -348,7 +348,7 @@ func test_from_dict_defaults() -> void:
 	assert_false(combat.is_attacking)
 	assert_eq(combat.current_attack_type, CombatComponentScript.AttackType.MELEE)
 	assert_eq(combat.base_damage, 5.0)
-	assert_eq(combat.attack_speed, 1.0)
+	assert_eq(combat.attack_speed, 2.5)
 	assert_eq(combat.attack_range, 50.0)
 	assert_eq(combat.attack_arc, 90.0)
 
