@@ -1,0 +1,3 @@
+@echo off
+echo Starting the Cosmocraft claim prototype...
+start "Cosmocraft" "C:\develop\godot\godot_4_6\Godot_v4.6.1-stable_win64.exe" --path "C:\develop\Cosmocraft" res://game/main.tscn
