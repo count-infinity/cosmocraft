@@ -9,6 +9,7 @@ const HealthComponentScript = preload("res://shared/components/health_component.
 const EnemyManagerScript = preload("res://server/enemies/enemy_manager.gd")
 const EnemyAIScript = preload("res://server/enemies/enemy_ai.gd")
 const CombatProcessorScript = preload("res://server/combat/combat_processor.gd")
+const CommandProcessorScript = preload("res://server/commands/command_processor.gd")
 
 signal server_started(port: int)
 signal server_stopped()
@@ -53,6 +54,9 @@ var _player_combat_components: Dictionary = {}  # player_id -> CombatComponent
 # Enemy system
 var _enemy_manager: RefCounted  # EnemyManager
 
+# Admin command system
+var _command_processor: RefCounted  # CommandProcessor
+
 # Combat constants
 const RESPAWN_INVULNERABILITY_DURATION: float = 2.0  # Seconds of invuln after respawn
 const CORPSE_RECOVERY_RANGE: float = 64.0  # Pixels - distance to recover corpse
@@ -60,7 +64,7 @@ const HP_REGEN_RATE: float = 5.0  # HP per second when out of combat
 
 # Default weapon stats (unarmed combat)
 const DEFAULT_ATTACK_DAMAGE: float = 5.0
-const DEFAULT_ATTACK_SPEED: float = 2.5  # Attacks per second (0.4s cooldown)
+const DEFAULT_ATTACK_SPEED: float = 4.0  # Attacks per second (0.25s cooldown)
 const DEFAULT_ATTACK_RANGE: float = 50.0  # Melee range in pixels
 const DEFAULT_ATTACK_ARC: float = 90.0  # Melee swing arc in degrees
 
@@ -73,17 +77,20 @@ func _init() -> void:
 	planet_seed = randi()
 	chunk_manager = ChunkManager.new(planet_seed, planet_size)
 
-	# Create game loop with chunk manager for collision checking
-	game_loop = GameLoop.new(game_state, chunk_manager)
-
 	# Initialize inventory registries
 	registries = ServerRegistriesScript.new()
 
-	# Initialize enemy system
+	# Initialize enemy system (must be before game_loop for collision checking)
 	_enemy_manager = EnemyManagerScript.new(registries.enemy_registry)
 	# EnemyAI is a stateless utility class - we just reference the script
 	_enemy_manager.enemy_spawned.connect(_on_enemy_spawned)
 	_enemy_manager.enemy_died.connect(_on_enemy_died)
+
+	# Create game loop with chunk manager and enemy manager for collision checking
+	game_loop = GameLoop.new(game_state, chunk_manager, _enemy_manager)
+
+	# Initialize admin command system
+	_command_processor = CommandProcessorScript.new(_enemy_manager)
 
 	# Connect message handler signals
 	message_handler.player_connect_requested.connect(_on_player_connect_requested)
@@ -106,6 +113,9 @@ func _init() -> void:
 	# Connect combat message handler signals
 	message_handler.corpse_recover_requested.connect(_on_corpse_recover_requested)
 	message_handler.attack_requested.connect(_on_attack_requested)
+
+	# Connect admin command message handler signals
+	message_handler.admin_command_received.connect(_on_admin_command)
 
 	# Connect game loop signals
 	game_loop.tick_completed.connect(_on_tick_completed)
@@ -1083,6 +1093,17 @@ func _respawn_player(player_id: String) -> void:
 		player_id, respawn_pos, health.current_hp, health.max_hp
 	))
 
+	# Sync inventory to the respawned player (inventory was cleared on death)
+	if _player_to_peer.has(player_id):
+		var peer_id: int = _player_to_peer[player_id]
+		_send_to_peer(peer_id, Serialization.encode_inventory_sync(
+			player_id,
+			player.inventory,
+			player.equipment,
+			player.hotbar,
+			player.stats
+		))
+
 	print("GameServer: Player %s respawned at spawn point with %.0f HP, %.1fs invulnerability" % [
 		player.name, health.current_hp, RESPAWN_INVULNERABILITY_DURATION
 	])
@@ -1649,3 +1670,20 @@ func _on_enemy_died(enemy_id: String, killer_id: String) -> void:
 	#     var drops := registries.loot_generator.generate_loot(loot_table_id, enemy.position)
 	#     for drop in drops:
 	#         game_state.add_ground_item(drop)
+
+
+## Handle admin command from client
+func _on_admin_command(peer_id: int, command: String) -> void:
+	if not _peer_to_player.has(peer_id):
+		return
+
+	var player_id: String = _peer_to_player[peer_id]
+	var player := game_state.get_player(player_id)
+	if player == null:
+		return
+
+	var result: Dictionary = _command_processor.execute(command, player.position)
+	_send_to_peer(peer_id, Serialization.encode_command_response(
+		result["success"], result["message"]
+	))
+	print("Command [%s]: %s -> %s" % [player.name, command, result["message"]])

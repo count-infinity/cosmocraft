@@ -37,7 +37,7 @@ var current_attack_type: AttackType = AttackType.MELEE
 var base_damage: float = 5.0
 
 ## Attacks per second (determines cooldown duration)
-var attack_speed: float = 2.5
+var attack_speed: float = 4.0
 
 ## Melee range or maximum ranged distance in pixels
 var attack_range: float = 50.0

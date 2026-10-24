@@ -4,6 +4,7 @@ extends Node
 const ClientRegistriesClass = preload("res://client/data/client_registries.gd")
 const WorldItemVisualScript = preload("res://client/world/world_item_visual.gd")
 const EnemyVisualScript = preload("res://client/world/enemy_visual.gd")
+const CorpseVisualScript = preload("res://client/world/corpse_visual.gd")
 const DamageNumberScript = preload("res://client/ui/damage_number.gd")
 const AttackEffectScript = preload("res://client/ui/attack_effect.gd")
 
@@ -37,6 +38,9 @@ signal corpse_expired(corpse_id: String)
 signal attack_result_received(success: bool, hits: Array, cooldown: float)
 signal entity_damaged(entity_id: String, damage: float, is_crit: bool, current_hp: float, max_hp: float, attacker_id: String)
 signal entity_died(entity_id: String, killer_id: String, entity_type: String)
+
+# Admin command signals
+signal command_response_received(success: bool, message: String)
 
 var config: ClientConfig
 var message_handler: ClientMessageHandler
@@ -72,6 +76,9 @@ var ground_item_visuals: Dictionary = {}  # item_id -> WorldItemVisual node
 # Enemy visual system
 var enemy_visuals: Dictionary = {}  # enemy_id -> EnemyVisual node
 var enemy_definitions: Dictionary = {}  # definition_id -> Dictionary (cached definitions)
+
+# Corpse visual system
+var corpse_visuals: Dictionary = {}  # corpse_id -> CorpseVisual node
 
 # Pickup interaction
 const PICKUP_RANGE: float = 64.0
@@ -133,6 +140,9 @@ func _init() -> void:
 	message_handler.enemy_update_received.connect(_on_enemy_update)
 	message_handler.enemy_death_received.connect(_on_enemy_death)
 	message_handler.enemy_despawn_received.connect(_on_enemy_despawn)
+
+	# Connect admin command message handler signals
+	message_handler.command_response_received.connect(_on_command_response)
 
 	# Connect to self to update attack controller when weapon changes
 	equipment_changed.connect(_on_weapon_equipment_changed)
@@ -196,14 +206,14 @@ func _process(delta: float) -> void:
 			pass
 
 func _unhandled_input(event: InputEvent) -> void:
-	# Handle pickup key press
+	# Handle pickup/interact key press (E or F)
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_E or event.keycode == KEY_F:
-			_try_pickup_nearby_item()
+			_try_interact_nearby()
 
-func _try_pickup_nearby_item() -> void:
+func _try_pickup_nearby_item() -> bool:
 	if local_player == null or ground_items.is_empty():
-		return
+		return false
 
 	var player_pos := local_player.position
 	var closest_item: WorldItem = null
@@ -220,6 +230,40 @@ func _try_pickup_nearby_item() -> void:
 	# Request pickup if we found an item
 	if closest_item != null:
 		request_pickup_item(closest_item.id, closest_item.position)
+		return true
+	return false
+
+
+## Try to interact with nearby objects (corpse recovery takes priority, then item pickup)
+func _try_interact_nearby() -> void:
+	if local_player == null:
+		return
+
+	# Try corpse recovery first (your own corpse takes priority)
+	if _try_recover_nearby_corpse():
+		return
+
+	# Then try item pickup
+	_try_pickup_nearby_item()
+
+
+## Try to recover a nearby corpse belonging to the local player
+## Returns true if a recovery request was sent
+func _try_recover_nearby_corpse() -> bool:
+	if local_player == null or corpse_visuals.is_empty():
+		return false
+
+	var player_pos := local_player.position
+
+	# Find own corpse within pickup range
+	for corpse_id in corpse_visuals:
+		var corpse_visual: Node2D = corpse_visuals[corpse_id]
+		if corpse_visual.is_own_corpse(_player_id) and corpse_visual.is_in_recovery_range(player_pos, PICKUP_RANGE):
+			request_corpse_recovery(corpse_id)
+			return true
+
+	return false
+
 
 func _update_chunk_streaming(delta: float) -> void:
 	if local_player == null or chunk_manager == null:
@@ -331,6 +375,8 @@ func _on_game_state(tick: int, players: Dictionary) -> void:
 				if chunk_manager != null:
 					local_player.chunk_manager = chunk_manager
 					local_player.prediction.chunk_manager = chunk_manager
+				# Pass game client reference for enemy collision prediction
+				local_player.game_client = self
 				add_child(local_player)
 		else:
 			# Create or update remote player
@@ -426,6 +472,9 @@ func _on_planet_info(seed_val: int, size_x: int, size_y: int) -> void:
 	if local_player != null:
 		local_player.chunk_manager = chunk_manager
 		local_player.prediction.chunk_manager = chunk_manager
+		# Ensure game client reference is set for enemy collision
+		if local_player.game_client == null:
+			local_player.game_client = self
 
 	# Notify that chunk manager is ready (for minimap, etc.)
 	chunk_manager_ready.emit(chunk_manager)
@@ -817,6 +866,8 @@ func _on_player_died(player_id: String, killer_id: String, corpse_data: Dictiona
 		print("GameClient: You died!")
 		player_died.emit()
 
+	# Create corpse visual
+	_create_corpse_visual(corpse_data)
 	corpse_spawned.emit(corpse_data)
 
 
@@ -833,17 +884,48 @@ func _on_player_respawn(player_id: String, position: Vector2, current_hp: float,
 
 
 func _on_corpse_spawned(corpse_data: Dictionary) -> void:
+	# Also handle corpses from other sources (joining late, etc.)
+	_create_corpse_visual(corpse_data)
 	corpse_spawned.emit(corpse_data)
 
 
 func _on_corpse_recovered(player_id: String, corpse_id: String) -> void:
 	print("GameClient: Player %s recovered corpse %s" % [player_id, corpse_id])
+	_remove_corpse_visual(corpse_id)
 	corpse_recovered.emit(corpse_id)
 
 
 func _on_corpse_expired(corpse_id: String) -> void:
 	print("GameClient: Corpse %s expired" % corpse_id)
+	_remove_corpse_visual(corpse_id)
 	corpse_expired.emit(corpse_id)
+
+
+func _create_corpse_visual(corpse_data: Dictionary) -> void:
+	if world == null:
+		return
+
+	var corpse_id: String = corpse_data.get("id", "")
+	if corpse_id.is_empty():
+		return
+
+	# Don't recreate if already exists
+	if corpse_visuals.has(corpse_id):
+		return
+
+	var visual := CorpseVisualScript.new()
+	visual.initialize(corpse_data, _player_id)
+	world.add_child(visual)
+	corpse_visuals[corpse_id] = visual
+	print("GameClient: Created corpse visual for %s" % corpse_id)
+
+
+func _remove_corpse_visual(corpse_id: String) -> void:
+	if corpse_visuals.has(corpse_id):
+		var visual: Node2D = corpse_visuals[corpse_id]
+		visual.queue_free()
+		corpse_visuals.erase(corpse_id)
+		print("GameClient: Removed corpse visual for %s" % corpse_id)
 
 
 func _on_health_update(player_id: String, current_hp: float, max_hp: float) -> void:
@@ -1052,3 +1134,25 @@ func _show_attack_effect(attacker_id: String, target_id: String, is_crit: bool) 
 	# Also create impact effect at target
 	var impact := AttackEffectScript.create_impact(target_pos, is_crit)
 	world.add_child(impact)
+
+
+# =============================================================================
+# Admin command functions (client -> server)
+# =============================================================================
+
+## Send an admin command to the server
+func send_command(command: String) -> void:
+	if not is_connected_to_server():
+		return
+
+	_send(Serialization.encode_admin_command(command))
+
+
+## Handle command response from server
+func _on_command_response(success: bool, message: String) -> void:
+	if success:
+		print("Command: %s" % message)
+	else:
+		printerr("Command failed: %s" % message)
+
+	command_response_received.emit(success, message)

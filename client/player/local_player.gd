@@ -16,6 +16,9 @@ var attack_controller: AttackControllerScript
 # Reference to chunk manager for collision prediction
 var chunk_manager: ChunkManager = null
 
+# Reference to game client for enemy position access
+var game_client: Node = null
+
 # Visual elements
 var body: ColorRect
 var aim_indicator: Polygon2D
@@ -122,13 +125,25 @@ func _apply_input_locally(input_data: Dictionary, delta: float) -> void:
 
 		# Apply movement with collision checking if chunk manager available
 		if chunk_manager != null:
+			var enemy_positions := _get_enemy_positions()
 			current_position = CollisionHelper.apply_movement_with_collision(
-				current_position, movement, chunk_manager
+				current_position, movement, chunk_manager, enemy_positions
 			)
 		else:
 			current_position += movement
 
 		_clamp_position()
+
+
+## Get positions of all enemies for client-side collision prediction
+func _get_enemy_positions() -> Array:
+	if game_client == null:
+		return []
+
+	var positions: Array = []
+	for enemy_visual: Node2D in game_client.enemy_visuals.values():
+		positions.append(enemy_visual.position)
+	return positions
 
 func _clamp_position() -> void:
 	current_position.x = clampf(current_position.x, 0.0, GameConstants.WORLD_WIDTH)

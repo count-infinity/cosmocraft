@@ -8,6 +8,7 @@ const ItemTooltipClass = preload("res://client/ui/item_tooltip.gd")
 const CraftingPanelClass = preload("res://client/ui/crafting_panel.gd")
 const StatsPanelClass = preload("res://client/ui/stats_panel.gd")
 const HealthBarClass = preload("res://client/ui/health_bar.gd")
+const CommandInputClass = preload("res://client/ui/command_input.gd")
 
 var player_count_label: Label
 var ping_label: Label
@@ -28,6 +29,7 @@ var item_tooltip: ItemTooltipClass = null
 var crafting_panel: CraftingPanelClass = null
 var stats_panel: StatsPanelClass = null
 var health_bar: HealthBarClass = null
+var command_input: CommandInputClass = null
 
 var InventoryPanelScene: PackedScene = preload("res://client/ui/inventory_panel.tscn")
 var EquipmentPanelScene: PackedScene = preload("res://client/ui/equipment_panel.tscn")
@@ -91,6 +93,9 @@ func _create_ui() -> void:
 
 	# Create inventory UI components
 	_create_inventory_ui()
+
+	# Create command input overlay (hidden by default)
+	_create_command_input()
 
 
 func _create_minimap() -> void:
@@ -167,6 +172,12 @@ func _create_inventory_ui() -> void:
 	stats_anchor.add_child(stats_panel)
 
 
+func _create_command_input() -> void:
+	command_input = CommandInputClass.new()
+	command_input.layer = 100  # Ensure it's on top
+	add_child(command_input)
+
+
 ## Initialize HUD with game client for inventory data
 func initialize_game_client(game_client: GameClient) -> void:
 	_game_client = game_client
@@ -193,8 +204,16 @@ func initialize_game_client(game_client: GameClient) -> void:
 		health_bar.player_died.connect(_on_player_died)
 		health_bar.player_respawned.connect(_on_player_respawned)
 
+	# Connect command input to game client
+	if command_input != null:
+		command_input.command_submitted.connect(game_client.send_command)
+
 
 func _input(event: InputEvent) -> void:
+	# Block other keybinds when command input is active
+	if command_input != null and command_input.is_active():
+		return
+
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_M:

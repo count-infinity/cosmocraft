@@ -57,7 +57,7 @@ static func _register_weapons(registry: ItemRegistry) -> void:
 	basic_sword.weight = 2.5
 	basic_sword.base_durability = 80
 	basic_sword.base_damage = 10
-	basic_sword.attack_speed = 1.0
+	basic_sword.attack_speed = 3.0  # 3 attacks per second = 0.33s cooldown
 	basic_sword.enchant_slots = 1
 	basic_sword.base_stats = {
 		ItemEnums.StatType.STRENGTH: 3.0

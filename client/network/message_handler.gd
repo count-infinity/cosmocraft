@@ -48,6 +48,9 @@ signal enemy_death_received(enemy_id: String, killer_id: String, loot_items: Arr
 signal enemy_despawn_received(enemy_id: String)
 signal enemies_sync_received(enemies: Array, definitions: Dictionary)
 
+# Admin command signals
+signal command_response_received(success: bool, message: String)
+
 func handle_message(json_string: String) -> void:
 	@warning_ignore("inference_on_variant")
 	var message := Serialization.decode_message(json_string)
@@ -131,6 +134,9 @@ func handle_message(json_string: String) -> void:
 			_handle_enemy_death(data)
 		MessageTypes.ENEMY_DESPAWN:
 			_handle_enemy_despawn(data)
+		# Admin command messages
+		MessageTypes.COMMAND_RESPONSE:
+			_handle_command_response(data)
 		_:
 			printerr("ClientMessageHandler: Unknown message type '%s'" % msg_type)
 
@@ -388,3 +394,13 @@ func _handle_enemy_death(data: Dictionary) -> void:
 func _handle_enemy_despawn(data: Dictionary) -> void:
 	var enemy_id: String = data.get("id", "")
 	enemy_despawn_received.emit(enemy_id)
+
+
+# =============================================================================
+# Admin command message handlers
+# =============================================================================
+
+func _handle_command_response(data: Dictionary) -> void:
+	@warning_ignore("inference_on_variant")
+	var parsed := Serialization.parse_command_response(data)
+	command_response_received.emit(parsed["success"], parsed["message"])

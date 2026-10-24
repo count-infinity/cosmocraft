@@ -79,3 +79,11 @@ const ENEMY_SPAWN: String = "enemy_spawn"  # Server tells client about new enemy
 const ENEMY_UPDATE: String = "enemy_update"  # Server sends enemy state changes
 const ENEMY_DEATH: String = "enemy_death"  # Server tells client enemy died
 const ENEMY_DESPAWN: String = "enemy_despawn"  # Server removes enemy from world
+
+# ===== Admin Command Messages =====
+
+# Client -> Server
+const ADMIN_COMMAND: String = "admin_command"  # Admin command from client
+
+# Server -> Client
+const COMMAND_RESPONSE: String = "command_response"  # Response to admin command

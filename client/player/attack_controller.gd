@@ -31,7 +31,7 @@ var current_weapon_type: int = ItemEnums.WeaponType.NONE
 
 ## Unarmed/default combat stats constants
 const UNARMED_DAMAGE: float = 5.0
-const UNARMED_SPEED: float = 2.5  # 2.5 attacks per second = 0.4s cooldown
+const UNARMED_SPEED: float = 4.0  # 4 attacks per second = 0.25s cooldown
 const UNARMED_RANGE: float = 50.0
 const UNARMED_ARC: float = 90.0
 

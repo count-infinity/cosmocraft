@@ -6,6 +6,10 @@ extends RefCounted
 ## Player collision radius (half the visual size)
 const PLAYER_RADIUS: float = 12.0
 
+## Minimum distance between player center and enemy center
+## Using player radius + default enemy hitbox radius
+const MIN_ENEMY_DISTANCE: float = GameConstants.PLAYER_HITBOX_RADIUS + GameConstants.DEFAULT_ENEMY_HITBOX_RADIUS
+
 
 ## Check if a position is passable (checking corners of player hitbox)
 static func is_position_passable(pos: Vector2, chunk_manager: ChunkManager) -> bool:
@@ -28,25 +32,39 @@ static func is_position_passable(pos: Vector2, chunk_manager: ChunkManager) -> b
 	return true
 
 
+## Check if a position would collide with any enemy
+## enemy_positions: Array of Vector2 enemy positions
+## Returns true if position is clear (no collision)
+static func is_clear_of_enemies(pos: Vector2, enemy_positions: Array) -> bool:
+	for enemy_pos: Vector2 in enemy_positions:
+		if pos.distance_to(enemy_pos) < MIN_ENEMY_DISTANCE:
+			return false
+	return true
+
+
 ## Apply movement with collision checking (sliding along walls)
 ## Returns the new position after applying movement with collision
+## enemy_positions: Optional array of Vector2 positions for enemy collision
 static func apply_movement_with_collision(
 	start_pos: Vector2,
 	movement: Vector2,
-	chunk_manager: ChunkManager
+	chunk_manager: ChunkManager,
+	enemy_positions: Array = []
 ) -> Vector2:
 	var result_pos := start_pos
 
 	# Try X movement first
 	if movement.x != 0:
 		var new_x := start_pos.x + movement.x
-		if is_position_passable(Vector2(new_x, start_pos.y), chunk_manager):
+		var test_pos := Vector2(new_x, start_pos.y)
+		if is_position_passable(test_pos, chunk_manager) and is_clear_of_enemies(test_pos, enemy_positions):
 			result_pos.x = new_x
 
 	# Then try Y movement
 	if movement.y != 0:
 		var new_y := result_pos.y + movement.y
-		if is_position_passable(Vector2(result_pos.x, new_y), chunk_manager):
+		var test_pos := Vector2(result_pos.x, new_y)
+		if is_position_passable(test_pos, chunk_manager) and is_clear_of_enemies(test_pos, enemy_positions):
 			result_pos.y = new_y
 
 	return result_pos

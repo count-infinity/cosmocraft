@@ -820,3 +820,34 @@ static func parse_enemy_despawn(data: Dictionary) -> Dictionary:
 		"id": data.get("id", ""),
 		"reason": data.get("reason", "despawn")
 	}
+
+
+# =============================================================================
+# Admin Command Messages
+# =============================================================================
+
+
+# Encode an admin command message (client -> server)
+static func encode_admin_command(command: String) -> String:
+	return encode_message(MessageTypes.ADMIN_COMMAND, {"command": command})
+
+
+# Parse an admin command message
+static func parse_admin_command(data: Dictionary) -> String:
+	return data.get("command", "")
+
+
+# Encode a command response message (server -> client)
+static func encode_command_response(success: bool, message: String) -> String:
+	return encode_message(MessageTypes.COMMAND_RESPONSE, {
+		"success": success,
+		"message": message
+	})
+
+
+# Parse a command response message
+static func parse_command_response(data: Dictionary) -> Dictionary:
+	return {
+		"success": data.get("success", false),
+		"message": data.get("message", "")
+	}

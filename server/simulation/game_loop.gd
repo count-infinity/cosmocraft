@@ -5,15 +5,17 @@ signal tick_completed(tick: int)
 
 var game_state: GameState
 var chunk_manager: ChunkManager
+var enemy_manager: RefCounted  # EnemyManager for enemy positions
 var tick_interval: float = GameConstants.TICK_INTERVAL
 var accumulated_time: float = 0.0
 
 # Pending inputs per player (cleared after each tick)
 var pending_inputs: Dictionary = {}
 
-func _init(state: GameState, p_chunk_manager: ChunkManager = null) -> void:
+func _init(state: GameState, p_chunk_manager: ChunkManager = null, p_enemy_manager: RefCounted = null) -> void:
 	game_state = state
 	chunk_manager = p_chunk_manager
+	enemy_manager = p_enemy_manager
 
 # Queue an input to be processed on the next tick
 func queue_input(player_id: String, input_data: Dictionary) -> void:
@@ -34,8 +36,11 @@ func update(delta: float) -> bool:
 	return ticked
 
 func _process_tick() -> void:
+	# Get enemy positions for collision checking
+	var enemy_positions: Array = _get_enemy_positions()
+
 	# Process physics for all players (with collision checking if chunk_manager available)
-	ServerPhysics.tick(game_state, pending_inputs, tick_interval, chunk_manager)
+	ServerPhysics.tick(game_state, pending_inputs, tick_interval, chunk_manager, enemy_positions)
 
 	# Clear pending inputs
 	pending_inputs.clear()
@@ -45,6 +50,17 @@ func _process_tick() -> void:
 
 	# Emit signal for broadcasting
 	tick_completed.emit(game_state.current_tick)
+
+
+## Extract positions of all alive enemies for collision checking
+func _get_enemy_positions() -> Array:
+	if enemy_manager == null:
+		return []
+
+	var positions: Array = []
+	for enemy in enemy_manager.get_alive_enemies():
+		positions.append(enemy.position)
+	return positions
 
 # Force process a tick immediately (for testing)
 func force_tick() -> void:

@@ -22,6 +22,9 @@ signal craft_requested(peer_id: int, recipe_id: String)
 signal corpse_recover_requested(peer_id: int, corpse_id: String)
 signal attack_requested(peer_id: int, aim_position: Vector2, attack_type: int)
 
+# Admin command signals
+signal admin_command_received(peer_id: int, command: String)
+
 # Process an incoming message from a client
 func handle_message(peer_id: int, json_string: String) -> void:
 	@warning_ignore("inference_on_variant")
@@ -65,6 +68,9 @@ func handle_message(peer_id: int, json_string: String) -> void:
 			_handle_corpse_recover_request(peer_id, data)
 		MessageTypes.ATTACK_REQUEST:
 			_handle_attack_request(peer_id, data)
+		# Admin command messages
+		MessageTypes.ADMIN_COMMAND:
+			_handle_admin_command(peer_id, data)
 		_:
 			printerr("ServerMessageHandler: Unknown message type '%s' from peer %d" % [msg_type, peer_id])
 
@@ -161,3 +167,10 @@ func _handle_attack_request(peer_id: int, data: Dictionary) -> void:
 	var aim_position: Vector2 = parsed["aim_position"]
 	var attack_type: int = parsed["attack_type"]
 	attack_requested.emit(peer_id, aim_position, attack_type)
+
+
+# ===== Admin Command Message Handlers =====
+
+func _handle_admin_command(peer_id: int, data: Dictionary) -> void:
+	var command: String = Serialization.parse_admin_command(data)
+	admin_command_received.emit(peer_id, command)

@@ -8,19 +8,23 @@
 
 config_version=5
 
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
 [application]
 
 config/name="Cosmocraft"
 config/description="A 2D top-down space RPG with planet exploration, space flight, crafting, scripting, and multiplayer."
 config/version="0.1.0"
-run/main_scene="res://server/main.tscn"
-config/features=PackedStringArray("4.5", "Forward Plus")
+run/main_scene="res://client/main.tscn"
+config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
 [display]
 
-window/size/viewport_width=1920
-window/size/viewport_height=1080
+window/size/viewport_width=1280
+window/size/viewport_height=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 

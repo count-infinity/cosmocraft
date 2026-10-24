@@ -35,6 +35,8 @@ var _tile_colors: Dictionary = {
 	TileTypes.Type.ICE: Color(0.7, 0.85, 0.95),
 	TileTypes.Type.CACTUS: Color(0.3, 0.55, 0.2),
 	TileTypes.Type.DEAD_BUSH: Color(0.5, 0.4, 0.25),
+	TileTypes.Type.WATER_SHALLOW: Color(0.4, 0.6, 0.9),  # Light blue for shallow water
+	TileTypes.Type.WATER_DEEP: Color(0.1, 0.2, 0.5),     # Dark blue for deep water
 }
 
 # Current player position (in world pixels)

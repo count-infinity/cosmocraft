@@ -13,6 +13,7 @@ var temperature_noise: FastNoiseLite
 var moisture_noise: FastNoiseLite
 var detail_noise: FastNoiseLite
 var feature_noise: FastNoiseLite
+var stone_noise: FastNoiseLite  # For creating connected stone deposits
 
 # Biome enum
 enum Biome {
@@ -74,6 +75,17 @@ func _setup_noise() -> void:
 	feature_noise.seed = planet_seed + 4000
 	feature_noise.noise_type = FastNoiseLite.TYPE_CELLULAR
 	feature_noise.frequency = 0.1
+
+	# Stone noise - for connected stone/rock deposits
+	# Uses lower frequency for larger, connected clusters
+	stone_noise = FastNoiseLite.new()
+	stone_noise.seed = planet_seed + 5000
+	stone_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	stone_noise.frequency = 0.02  # Low frequency = larger connected areas
+	stone_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	stone_noise.fractal_octaves = 3
+	stone_noise.fractal_lacunarity = 2.0
+	stone_noise.fractal_gain = 0.5
 
 
 ## Generate a chunk at the given chunk coordinates
@@ -214,24 +226,31 @@ func _add_features(x: int, y: int, base_tile: int, biome: Biome, elevation: floa
 	var feature_val := feature_noise.get_noise_2d(x, y)
 	var detail_val := detail_noise.get_noise_2d(x * 3, y * 3)
 
+	# Get stone deposit value for this position
+	var stone_val := stone_noise.get_noise_2d(x, y)
+
 	match biome:
 		Biome.FOREST:
-			return _add_forest_features(feature_val, detail_val)
+			return _add_forest_features(feature_val, detail_val, stone_val)
 		Biome.PLAINS:
-			return _add_plains_features(feature_val, detail_val)
+			return _add_plains_features(feature_val, detail_val, stone_val)
 		Biome.DESERT:
-			return _add_desert_features(feature_val, detail_val)
+			return _add_desert_features(feature_val, detail_val, stone_val)
 		Biome.TUNDRA, Biome.ICE:
-			return _add_tundra_features(feature_val, detail_val, base_tile)
+			return _add_tundra_features(feature_val, detail_val, base_tile, stone_val)
 		Biome.SWAMP:
-			return _add_swamp_features(feature_val, detail_val)
+			return _add_swamp_features(feature_val, detail_val, stone_val)
 		Biome.BEACH:
-			return _add_beach_features(feature_val, detail_val, base_tile)
+			return _add_beach_features(feature_val, detail_val, base_tile, stone_val)
 		_:
 			return base_tile
 
 
-func _add_forest_features(feature_val: float, detail_val: float) -> int:
+func _add_forest_features(feature_val: float, detail_val: float, stone_val: float) -> int:
+	# Stone deposits - clustered using stone_noise (threshold creates connected areas)
+	if stone_val > 0.6:
+		return TileTypes.Type.ROCK
+
 	# Dense tree placement
 	if feature_val > 0.7:
 		if detail_val > 0.3:
@@ -245,13 +264,15 @@ func _add_forest_features(feature_val: float, detail_val: float) -> int:
 			return TileTypes.Type.TALL_GRASS
 		elif detail_val > 0.3:
 			return TileTypes.Type.FLOWER
-	elif feature_val < -0.7:
-		return TileTypes.Type.ROCK
 
 	return TileTypes.Type.GRASS
 
 
-func _add_plains_features(feature_val: float, detail_val: float) -> int:
+func _add_plains_features(feature_val: float, detail_val: float, stone_val: float) -> int:
+	# Stone deposits - clustered using stone_noise
+	if stone_val > 0.65:
+		return TileTypes.Type.ROCK
+
 	# Sparse trees, more grass
 	if feature_val > 0.85:
 		return TileTypes.Type.TREE_TRUNK
@@ -262,35 +283,41 @@ func _add_plains_features(feature_val: float, detail_val: float) -> int:
 			return TileTypes.Type.TALL_GRASS
 		elif detail_val > 0.4:
 			return TileTypes.Type.FLOWER
-	elif feature_val < -0.8:
-		return TileTypes.Type.ROCK
 
 	return TileTypes.Type.GRASS
 
 
-func _add_desert_features(feature_val: float, detail_val: float) -> int:
-	# Cacti, rocks, dead bushes
+func _add_desert_features(feature_val: float, detail_val: float, stone_val: float) -> int:
+	# Stone deposits - clustered using stone_noise
+	if stone_val > 0.55:
+		return TileTypes.Type.ROCK
+
+	# Cacti, dead bushes
 	if feature_val > 0.85:
 		return TileTypes.Type.CACTUS
 	elif feature_val > 0.7:
 		return TileTypes.Type.DEAD_BUSH
-	elif feature_val < -0.7:
-		return TileTypes.Type.ROCK
 
 	return TileTypes.Type.SAND
 
 
-func _add_tundra_features(feature_val: float, detail_val: float, base_tile: int) -> int:
-	# Sparse trees, rocks
+func _add_tundra_features(feature_val: float, detail_val: float, base_tile: int, stone_val: float) -> int:
+	# Stone deposits - more common in tundra
+	if stone_val > 0.5:
+		return TileTypes.Type.ROCK
+
+	# Sparse trees
 	if feature_val > 0.9:
 		return TileTypes.Type.TREE_TRUNK
-	elif feature_val < -0.6:
-		return TileTypes.Type.ROCK
 
 	return base_tile
 
 
-func _add_swamp_features(feature_val: float, detail_val: float) -> int:
+func _add_swamp_features(feature_val: float, detail_val: float, stone_val: float) -> int:
+	# Stone deposits - rare in swamps
+	if stone_val > 0.7:
+		return TileTypes.Type.ROCK
+
 	# Water pools, dead trees
 	if feature_val > 0.6:
 		if detail_val > 0.5:
@@ -305,9 +332,9 @@ func _add_swamp_features(feature_val: float, detail_val: float) -> int:
 	return TileTypes.Type.GRASS
 
 
-func _add_beach_features(feature_val: float, detail_val: float, base_tile: int) -> int:
-	# Occasional rocks
-	if feature_val < -0.8:
+func _add_beach_features(feature_val: float, detail_val: float, base_tile: int, stone_val: float) -> int:
+	# Stone deposits - rare on beaches
+	if stone_val > 0.75:
 		return TileTypes.Type.ROCK
 
 	return base_tile
