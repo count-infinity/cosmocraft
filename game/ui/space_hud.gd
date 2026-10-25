@@ -9,13 +9,17 @@ const RED := Color(1.0, 0.4, 0.34)
 const ORANGE := Color(1.0, 0.65, 0.3)
 const CYAN := Color(0.45, 0.9, 1.0)
 const VIOLET := Color(0.85, 0.45, 1.0)
+const OBJECTIVE_COLOR := Color(1.0, 0.45, 0.5)
 
-const HELP_TEXT := "WASD move  ·  mouse aim  ·  hold left click to fire  ·  Space/Shift dash\nE kindle  ·  Tab/M map  ·  Esc pause  ·  H hide help\nF1 debug  ·  F2 claim speed  ·  F3 god mode  ·  F4 new sector  ·  F5 mute  ·  F11 fullscreen"
+const HELP_TEXT := "WASD move  ·  mouse aim  ·  left click fire  ·  right click torpedo  ·  Space/Shift dash
+E kindle / land  ·  F refit (in your light)  ·  Tab/M map  ·  Esc pause  ·  H hide help
+F1 debug  ·  F2 claim speed  ·  F3 god mode  ·  F4 new sector  ·  F5 mute  ·  F11 fullscreen"
 
 var _canvas: HudCanvas
 var _claim_name: Label
 var _claim_status: Label
 var _territory: Label
+var _objective: Label
 var _prompt: Label
 var _banner: Label
 var _banner_sub: Label
@@ -33,13 +37,15 @@ func _ready() -> void:
 	_claim_status = _add_label(15, GOLD, HORIZONTAL_ALIGNMENT_CENTER, Control.PRESET_TOP_WIDE, 82.0)
 	_territory = _add_label(16, GOLD, HORIZONTAL_ALIGNMENT_RIGHT, Control.PRESET_TOP_WIDE, 16.0)
 	_territory.offset_right = -22.0
+	_objective = _add_label(14, OBJECTIVE_COLOR, HORIZONTAL_ALIGNMENT_RIGHT, Control.PRESET_TOP_WIDE, 40.0)
+	_objective.offset_right = -22.0
 	_prompt = _add_label(16, DIM, HORIZONTAL_ALIGNMENT_CENTER, Control.PRESET_BOTTOM_WIDE, -118.0)
 	_banner = _add_label(42, GOLD, HORIZONTAL_ALIGNMENT_CENTER, Control.PRESET_TOP_WIDE, 150.0)
 	_banner_sub = _add_label(19, DIM, HORIZONTAL_ALIGNMENT_CENTER, Control.PRESET_TOP_WIDE, 206.0)
 	_help = _add_label(13, Color(0.7, 0.68, 0.8, 0.85), HORIZONTAL_ALIGNMENT_RIGHT, Control.PRESET_BOTTOM_WIDE, -66.0)
 	_help.offset_right = -18.0
 	_help.text = HELP_TEXT
-	_debug = _add_label(13, Color(0.6, 1.0, 0.7), HORIZONTAL_ALIGNMENT_LEFT, Control.PRESET_TOP_WIDE, 14.0)
+	_debug = _add_label(13, Color(0.6, 1.0, 0.7), HORIZONTAL_ALIGNMENT_LEFT, Control.PRESET_TOP_WIDE, 52.0)
 	_debug.offset_left = 18.0
 	_banner.modulate.a = 0.0
 	_banner_sub.modulate.a = 0.0
@@ -70,8 +76,53 @@ func set_vitals(shield_ratio: float, hull_ratio: float, dash_ready: float) -> vo
 	_canvas.dash_ready = dash_ready
 
 
-func set_territory(claimed: int, total: int) -> void:
+func set_sparks(sparks: int) -> void:
+	_canvas.sparks = sparks
+
+
+func set_resources(resources: Dictionary) -> void:
+	_canvas.resources = resources
+
+
+## Renames the meters and readouts (the pilot on foot has health and a
+## barrier, a roll and flares instead of hull, shield, dash and torpedoes).
+func set_labels(first_vital: String, second_vital: String, dash: String, ammo: String) -> void:
+	_canvas.vital_labels = [first_vital, second_vital]
+	_canvas.dash_label = dash
+	_canvas.ammo_label = ammo
+
+
+func set_help(text: String) -> void:
+	_help.text = text
+
+
+func set_vitals_visible(shown: bool) -> void:
+	_canvas.show_vitals = shown
+
+
+## Torpedoes loaded and capacity (0 capacity hides the readout).
+func set_ammo(ammo: Vector2i) -> void:
+	_canvas.ammo = ammo
+
+
+func flash_claim() -> void:
+	_canvas.claim_flash = 1.0
+
+
+func set_territory(claimed: int, total: int, darkness := "") -> void:
 	_territory.text = "TERRITORY  %d / %d" % [claimed, total]
+	if not darkness.is_empty():
+		_territory.text += "  ·  " + darkness
+
+
+## The top-right line, for modes without territory.
+func set_header(text: String) -> void:
+	_territory.text = text
+
+
+func set_objective(text: String, color := OBJECTIVE_COLOR) -> void:
+	_objective.text = text
+	_objective.label_settings.font_color = color
 
 
 func set_prompt(text: String) -> void:

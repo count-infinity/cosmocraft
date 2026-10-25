@@ -1,7 +1,8 @@
 class_name HudCanvas
 extends Control
-## The custom-drawn parts of the HUD: the claim bar, shield and hull meters,
-## the dash pip, and arrows at the screen edge pointing to off-screen targets.
+## The custom-drawn parts of the HUD: the claim bar, the two vital meters,
+## the dash pip, the spark and resource counters, and arrows at the screen
+## edge pointing to off-screen targets.
 
 var claim_visible := false
 var claim_progress := 0.0
@@ -10,6 +11,17 @@ var elite_mark := 0.9
 var shield_ratio := 1.0
 var hull_ratio := 1.0
 var dash_ready := 1.0
+var sparks := 0
+## Planet resources carried, {"ore": n, ...}; only nonzero ones are shown.
+var resources: Dictionary = {}
+var ammo := Vector2i.ZERO
+var vital_labels: Array[String] = ["SHIELD", "HULL"]
+## The homeworld hides the meters and ammo; only the counters show.
+var show_vitals := true
+var dash_label := "DASH"
+var ammo_label := "TORPEDOES"
+## Brightens the claim bar for a moment when sparks are collected.
+var claim_flash := 0.0
 ## Each entry: {"position": Vector2 (screen), "color": Color, "size": float}
 var indicators: Array[Dictionary] = []
 
@@ -21,14 +33,17 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	claim_flash = maxf(claim_flash - delta * 4.0, 0.0)
 	queue_redraw()
 
 
 func _draw() -> void:
 	if claim_visible:
 		_draw_claim_bar()
-	_draw_vitals()
+	if show_vitals:
+		_draw_vitals()
+	_draw_sparks()
 	_draw_indicators()
 
 
@@ -37,18 +52,70 @@ func _draw_claim_bar() -> void:
 	draw_rect(bar.grow(3.0), Color(0.0, 0.0, 0.0, 0.55))
 	draw_rect(bar, Color(0.12, 0.08, 0.16))
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * claim_progress, bar.size.y)), claim_color)
+	if claim_flash > 0.0:
+		var edge := bar.position.x + bar.size.x * claim_progress
+		draw_rect(Rect2(Vector2(edge - 30.0, bar.position.y - 2.0), Vector2(30.0, bar.size.y + 4.0)), Color(1.0, 0.95, 0.7, claim_flash * 0.8))
 	var mark_x := bar.position.x + bar.size.x * elite_mark
 	draw_line(Vector2(mark_x, bar.position.y - 5.0), Vector2(mark_x, bar.end.y + 5.0), SpaceHud.VIOLET, 2.0)
 
 
 func _draw_vitals() -> void:
 	var origin := Vector2(24.0, size.y - 74.0)
-	_draw_meter(origin, "SHIELD", shield_ratio, SpaceHud.CYAN)
-	_draw_meter(origin + Vector2(0.0, 24.0), "HULL", hull_ratio, SpaceHud.ORANGE)
+	_draw_meter(origin, vital_labels[0], shield_ratio, SpaceHud.CYAN)
+	_draw_meter(origin + Vector2(0.0, 24.0), vital_labels[1], hull_ratio, SpaceHud.ORANGE)
 	var pip := origin + Vector2(272.0, 17.0)
 	var ready := dash_ready >= 1.0
 	draw_arc(pip, 9.0, -PI * 0.5, -PI * 0.5 + TAU * clampf(dash_ready, 0.0, 1.0), 24, SpaceHud.GOLD if ready else SpaceHud.DIM, 3.0)
-	draw_string(_font, pip + Vector2(16.0, 5.0), "DASH", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, SpaceHud.GOLD if ready else SpaceHud.DIM)
+	draw_string(_font, pip + Vector2(16.0, 5.0), dash_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, SpaceHud.GOLD if ready else SpaceHud.DIM)
+
+
+## Spark and resource counters in the top-left corner, and ammo pips above
+## the meters.
+func _draw_sparks() -> void:
+	var center := Vector2(30.0, 30.0)
+	draw_colored_polygon(PackedVector2Array([
+		center + Vector2(0.0, -9.0), center + Vector2(6.0, 0.0),
+		center + Vector2(0.0, 9.0), center + Vector2(-6.0, 0.0),
+	]), SpaceHud.GOLD)
+	var text := str(sparks)
+	draw_string(_font, center + Vector2(14.0, 7.0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, SpaceHud.GOLD)
+	var x := center.x + 14.0 + _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 26.0
+	for kind in PlanetData.RESOURCE_ORDER:
+		var amount := int(resources.get(kind, 0))
+		if amount <= 0:
+			continue
+		var color: Color = PlanetData.RESOURCE_COLORS[kind]
+		var display := Color(minf(color.r, 1.0), minf(color.g, 1.0), minf(color.b, 1.0))
+		draw_resource_icon(self, Vector2(x, center.y), kind, 7.0)
+		var label := str(amount)
+		draw_string(_font, Vector2(x + 12.0, center.y + 6.0), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, display)
+		x += 12.0 + _font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x + 22.0
+	if ammo.y > 0 and show_vitals:
+		var origin := Vector2(24.0, size.y - 98.0)
+		draw_string(_font, origin + Vector2(0.0, 10.0), ammo_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, SpaceHud.DIM)
+		for i in ammo.y:
+			var pip := origin + Vector2(84.0 + i * 14.0, 6.0)
+			draw_circle(pip, 4.5, SpaceHud.GOLD if i < ammo.x else Color(0.3, 0.28, 0.35))
+
+
+## The little shape used for a resource everywhere in the UI: a nugget of
+## ore, a crystal shard, or a blob of biomass.
+static func draw_resource_icon(canvas: CanvasItem, center: Vector2, kind: String, radius: float) -> void:
+	var color: Color = PlanetData.RESOURCE_COLORS.get(kind, SpaceHud.GOLD)
+	match kind:
+		"crystal":
+			canvas.draw_colored_polygon(PackedVector2Array([
+				center + Vector2(0.0, -radius * 1.4), center + Vector2(radius * 0.6, 0.0),
+				center + Vector2(0.0, radius * 1.1), center + Vector2(-radius * 0.6, 0.0),
+			]), color)
+		"biomass":
+			canvas.draw_circle(center, radius * 0.85, color)
+			canvas.draw_circle(center + Vector2(radius * 0.55, -radius * 0.5), radius * 0.4, color)
+		_:
+			var hexagon := PackedVector2Array()
+			for k in 6:
+				hexagon.append(center + Vector2.from_angle(TAU * k / 6.0 + 0.3) * radius)
+			canvas.draw_colored_polygon(hexagon, color)
 
 
 func _draw_meter(origin: Vector2, label: String, ratio: float, color: Color) -> void:

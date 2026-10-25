@@ -17,46 +17,91 @@ Godot 4.7.2 is also installed under `C:\develop\godot\godot_4_7\`; the project i
 "C:\develop\godot\godot_4_6\Godot_v4.6.1-stable_win64_console.exe" --headless --path "C:\develop\Cosmocraft" --import
 ```
 
-## Running the Claim Prototype (game/)
-- Editor: open `game/main.tscn` and press F6.
-- Double-click `run_claim.bat`, or:
+## Running the Game (game/)
+- Editor: open `game/main.tscn` and press F6. Double-click `run_claim.bat`, or:
 ```bash
 "C:\develop\godot\godot_4_6\Godot_v4.6.1-stable_win64.exe" --path "C:\develop\Cosmocraft" res://game/main.tscn
 ```
-- Options go after `--` (documented at the top of `game/space/space_game.gd`): `--seed=N`, `--autoplay`, `--god`, `--debug`, `--claim-speed=X`, `--capture=DIR --shots=3,20`, `--shot-on-ignite`, `--map-at=T`, `--log-fps`.
+- `main.tscn` runs `GameFlow`: the walkable homeworld (`Homeworld`) between runs, a `SpaceGame` per run (which can push on through several galaxy sectors), and for each planet landing an `AssaultMission` (side-scrolling) followed by a `SurfaceMission` (space is frozen with `set_active(false)` meanwhile). Progress saves to `user://cosmocraft_save.json`. Autoplay and capture runs never touch it.
+- Options go after `--`.
+  - Run flags (top of `game/space/space_game.gd`): `--seed=N`, `--autoplay`, `--god`, `--debug`, `--claim-speed=X`, `--shot-on-ignite`, `--map-at=T`, `--log-fps`, `--visit=asteroids|nebula|nest|rich|heart|planet`, `--show=loot|refit`.
+  - Flow flags (`game/game_flow.gd`): `--capture=DIR --shots=3,20` (also turns vsync off, which otherwise stalls the window when the display sleeps), `--show=home` with optional `--panel=none|launch|shipyard|lab|relay|hearth`, `--skip-home`, `--land` (wake the first planet and land on it straight away), `--skip-assault` (land without the assault), `--darkness=N` (force a difficulty level, 0 = Twilight, 1 = Dusk...).
+  - Surface flags (`game/surface/surface_mission.gd`): `--surface-start=vein`. `--autoplay` and `--god` apply there too.
+- Surface smoke test: `-- --autoplay --land --seed=1234` with `--fixed-fps 60 --quit-after 9000`. Under autoplay the mission prints a progress line every 10 seconds (health, haul, awake Gloom, fps). The surface autopilot aims with deliberate wobble and only "sees" about as far as a player, so its runs say something about balance.
 - Headless smoke test (fixed 60 fps, so 3600 frames is one game-minute):
 ```bash
 "...console.exe" --headless --fixed-fps 60 --quit-after 3600 --path "C:\develop\Cosmocraft" res://game/main.tscn -- --autoplay --seed=42
 ```
-- Screenshots for visual checks need the GUI exe (headless has no renderer): `-- --autoplay --capture=DIR --shots=5,30 --shot-on-ignite`. Captures are converted from linear (HDR 2D) to sRGB so they match the screen.
+- Screenshots for visual checks need the GUI exe (headless has no renderer): `-- --autoplay --capture=DIR --shots=5,30 --shot-on-ignite`, or `-- --show=refit --capture=DIR --shots=1.5`. `ScreenCapture` converts from linear (HDR 2D) to sRGB, so captures match the screen.
 
 ### game/ conventions
-- Entities are `Node2D`s drawn with `_draw()`. Collisions are manual (circle and swept-segment tests through `SpatialGrid`), and the simulation runs in `_process` under SpaceGame's own time scale (used for hitstop). No physics engine.
+- Entities are `Node2D`s drawn with `_draw()`, and UI screens are custom-drawn `Control`s. Collisions are manual (circle and swept-segment tests through `SpatialGrid`), and the simulation runs in `_process` under SpaceGame's own time scale (used for hitstop). No physics engine.
 - HDR 2D is on, so colors above 1.0 glow. In shaders, put colors in `source_color` uniforms; raw constants are treated as linear and come out darker than expected.
-- Input actions beyond `move_*` are registered at runtime in `SpaceGame._register_input()`, so `project.godot` stays untouched.
-- Every tunable number lives in `SpaceTuning` (`game/space/space_tuning.gd`).
-- Pure logic (sector generation, claims, wave director, grid) has GUT tests in `tests/game/`.
+- Full-screen Controls created at runtime need `set_anchors_and_offsets_preset()`. Plain `set_anchors_preset()` after joining the tree keeps the old zero size.
+- Input actions beyond `move_*` are registered at runtime by `InputSetup.register()` (`game/core/input_setup.gd`), so `project.godot` stays untouched.
+- Combat lives in `Battle` (`game/combat/battle.gd`), which both SpaceGame and SurfaceMission own. Each mode is the "host" GloomEnemy and WeaponSystem call back into: `target_position()`, `has_objective()`, `objective_position()`, `route_to()` (waypoints around obstacles), `nests_awake()`, `spawn_enemy_shot()`, `spawn_minions()`, `fire_volley()`, `nearest_enemy_within()`, `on_snuffer_reached()`. Drops are decided by listening to `Battle.enemy_killed`.
+- `Glow.ensure()` (`game/core/glow.gd`) sets up HDR 2D and the one shared WorldEnvironment; every mode calls it.
+- Real-time features (research, outposts) take a `now` parameter so tests control the clock.
+- Check new `class_name`s against the legacy code first. `grep -rh "^class_name" --include=*.gd . | sort | uniq -d` must print nothing. A clash (we hit one with `LootTable`) silently breaks the legacy tests.
+- Pure logic has GUT tests in `tests/game/`, and `test_space_game.gd` drives the real game headlessly through run flows.
 
 ```
 game/
-├── main.tscn                  # Entry point: SpaceGame
+├── main.tscn                  # Entry point: GameFlow
+├── game_flow.gd               # Homeworld <-> runs <-> planet surfaces, banking, saving
+├── core/                      # glow.gd (shared HDR look), input_setup.gd
+├── combat/battle.gd           # Shared combat: Gloom, shots, hits, blasts, armor, homing
+├── galaxy/galaxy_data.gd      # The conquest map: systems of sectors, lanes, tiers, themes
+├── assault/                   # The side-scrolling planet assault
+│   ├── assault_mission.gd     # Scroll, ground defenses, skimmer waves, the bastion, suppression
+│   ├── assault_terrain.gd, assault_sky.gd   # Side-view ground and parallax sky
+│   └── assault_autopilot.gd   # --autoplay for the assault
 ├── space/
-│   ├── space_game.gd          # Orchestrator: frame loop, claims, spawning, ignition, HUD wiring
-│   ├── space_tuning.gd        # Every tunable number
-│   ├── sector_generator.gd    # Voronoi regions clipped to a ragged boundary
-│   ├── sector_data.gd, region_data.gd
+│   ├── space_game.gd          # One run: frame loop, claims, combat, ignition, loot, refit, run end
+│   ├── space_tuning.gd        # Every tunable number for sectors, claims, sparks, waves, ship
+│   ├── sector_generator.gd    # Voronoi cells merged into regions, the heart, modifiers, planets, asteroids
+│   ├── sector_data.gd, region_data.gd, planet_data.gd
+│   ├── planet_layer.gd, planet.gdshader   # Planets, orbit rings, wake/kindle states
 │   ├── claim.gd               # Claim state machine
 │   ├── wave_director.gd       # Credit-based spawner
 │   ├── spatial_grid.gd        # Broadphase for collisions
-│   ├── ship.gd, ship_input.gd
-│   ├── gloom_enemy.gd         # mite, dart, spitter, snuffer
+│   ├── ship.gd, ship_input.gd, weapon_system.gd
+│   ├── gloom_enemy.gd         # mite, dart, spitter, snuffer, carapace, brood, lancer, heart, nest
 │   ├── projectiles.gd, pickups.gd, kindle_spark.gd
-│   ├── region_layer.gd, region.gdshader   # Fog, claim light, ignition wave
-│   ├── border_layer.gd        # Borders, beacons, map labels
+│   ├── region_layer.gd, region.gdshader   # Fog, modifier tints, claim light, ignition wave
+│   ├── border_layer.gd        # Borders, beacons, heart marker, map labels
+│   ├── asteroid_layer.gd, nebula_veil.gd
 │   ├── starfield.gd, far_stars.gd, fx_layer.gd, game_camera.gd
 │   └── sfx.gd                 # Procedurally synthesized sound effects
-├── ui/                        # space_hud.gd, hud_canvas.gd
-└── debug/autopilot.gd         # Bot pilot for --autoplay
+├── fitting/                   # The ship grid (Stars Without Number-style budgets)
+│   ├── component_def.gd, component_library.gd   # Every part
+│   ├── hull_def.gd            # Skiff, Corvette grids
+│   ├── loadout.gd             # Placement rules, power, adjacency, marks, stats
+│   └── ship_stats.gd, weapon_spec.gd
+├── surface/                   # Landfall: a planet's surface on foot
+│   ├── surface_mission.gd     # Explore, plant the pylon, ground siege, kindle, lift off
+│   ├── surface_map.gd         # Generator: lander, vein, rocks, hazards, deposits, nests, caches, packs, paths
+│   ├── surface_tuning.gd      # Pilot and siege numbers (extends SpaceTuning for Claim/WaveDirector)
+│   ├── pilot.gd               # The lamplighter on foot: roll, barrier, lantern
+│   ├── lantern_veil.gd        # The dark, with up to 24 lights
+│   ├── surface_glints.gd      # Eyes and twinkles drawn above the dark
+│   ├── surface_terrain.gd, surface_ground.gdshader, surface_props.gd
+│   └── surface_autopilot.gd   # --autoplay on foot
+├── home/                      # Hearthhold, the walkable hub between runs
+│   ├── homeworld.gd           # Buildings, walking, research ticking
+│   ├── home_buildings.gd      # Hearth, Launch Pad, Shipyard, Lab, Outpost Relay
+│   └── home_panel.gd          # Shipyard / Lab / Relay / Hearth windows
+├── run/
+│   ├── run_state.gd           # One run's ship, sparks, resources, outposts, outcome
+│   ├── loot_picks.gd          # Pick-1-of-3 rolls and applying them
+│   ├── research.gd            # Lab projects (resources + real time)
+│   ├── difficulty.gd          # Darkness levels (Twilight... Void N) plus sector tier scaling
+│   ├── hearth_ranks.gd        # Hearth levels: endless paragon-style points from banked sparks
+│   ├── pilot_ranks.gd         # Pilot levels and stats, earned on planets
+│   └── level_curve.gd         # The experience curve both use
+│   └── meta_progress.gd, meta_upgrades.gd   # Banked sparks/resources, upgrades, blueprints, research, outposts, save
+├── ui/                        # space_hud, hud_canvas, loot_screen, refit_screen, sector_choice_screen
+└── debug/                     # autopilot.gd (--autoplay), screen_capture.gd (--capture)
 ```
 
 ## Running Tests (GUT)
@@ -68,7 +113,7 @@ Subdirectories are included via `.gutconfig.json`. Use `-gdir=res://tests/game/`
 Or from within the Godot editor: use the GUT panel at the bottom.
 
 GUT version: 9.5.1
-Current test count: 969 tests (38 test scripts)
+Current test count: 1102 tests (46 test scripts)
 
 Known issues under Godot 4.6:
 - `tests/test_serialization.gd` (legacy) fails to parse because `var x :=` from a Variant-returning call is an error now, so its tests silently don't run.

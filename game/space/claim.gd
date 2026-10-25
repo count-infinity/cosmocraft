@@ -14,7 +14,11 @@ var progress := 0.0
 var state := State.ACTIVE
 var outside_time := 0.0
 var sparks_collected := 0
+## Claim time shaved off by sparks so far.
+var spark_seconds := 0.0
 var snuffs := 0
+## Ship bonuses such as a Kindler Array (1.0 = no bonus).
+var speed_scale := 1.0
 
 var _tuning: SpaceTuning
 
@@ -28,7 +32,7 @@ func _init(p_region_id: int, p_required_seconds: float, tuning: SpaceTuning) -> 
 func update(delta: float, player_inside: bool) -> void:
 	if is_over():
 		return
-	var rate := _tuning.claim_speed_multiplier / required_seconds
+	var rate := _tuning.claim_speed_multiplier * speed_scale / required_seconds
 	if player_inside:
 		outside_time = 0.0
 		state = State.ACTIVE
@@ -49,6 +53,7 @@ func add_spark() -> void:
 	if is_over():
 		return
 	sparks_collected += 1
+	spark_seconds += _tuning.spark_seconds
 	_add_progress(_tuning.spark_seconds / required_seconds)
 
 
@@ -71,7 +76,7 @@ func is_over() -> bool:
 
 ## Seconds left at the current fill rate, not counting sparks.
 func seconds_remaining() -> float:
-	return (1.0 - progress) * required_seconds / _tuning.claim_speed_multiplier
+	return (1.0 - progress) * required_seconds / (_tuning.claim_speed_multiplier * speed_scale)
 
 
 func _add_progress(amount: float) -> void:

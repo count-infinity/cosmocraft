@@ -14,6 +14,10 @@ uniform vec4 fog_light : source_color = vec4(0.16, 0.08, 0.23, 0.88);
 uniform vec4 light_color : source_color = vec4(1.0, 0.72, 0.32, 1.0);
 uniform vec4 alarm_color : source_color = vec4(0.5, 0.05, 0.06, 1.0);
 uniform vec4 nebula_color : source_color = vec4(0.3, 0.8, 1.0, 1.0);
+// Modifier tint mixed into the dark fog (nest, nebula, heart...).
+uniform vec4 tint_color : source_color = vec4(0.0, 0.0, 0.0, 1.0);
+uniform float tint_strength = 0.0;
+uniform float tint_pulse = 0.0;
 uniform vec2 spark_pos = vec2(0.0);
 uniform float claim_radius = 0.0;
 uniform float alarm = 0.0;
@@ -30,6 +34,8 @@ void vertex() {
 vec4 dark_look(float n, float n2) {
 	vec4 col = mix(fog_deep, fog_light, smoothstep(0.35, 0.85, n) * 0.8);
 	col.rgb += fog_light.rgb * 0.5 * smoothstep(0.6, 0.95, n2);
+	float pulse = 1.0 + tint_pulse * (0.5 + 0.5 * sin(TIME * 2.6));
+	col.rgb = mix(col.rgb, tint_color.rgb, tint_strength * pulse * (0.4 + 0.6 * n2));
 	return col;
 }
 

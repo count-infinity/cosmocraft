@@ -12,12 +12,22 @@ const BEACON_COLOR := Color(2.2, 1.6, 0.7)
 const MARKER_COLOR := Color(1.0, 0.75, 0.4)
 const LABEL_COLOR := Color(0.85, 0.82, 0.95)
 const THREAT_COLOR := Color(1.0, 0.4, 0.4)
+const HEART_COLOR := Color(2.2, 0.25, 0.4)
+const HEART_LABEL_COLOR := Color(1.0, 0.35, 0.4)
+const MODIFIER_COLORS := {
+	RegionData.Modifier.NEST: Color(1.0, 0.35, 0.6),
+	RegionData.Modifier.RICH: Color(1.0, 0.85, 0.35),
+	RegionData.Modifier.ASTEROIDS: Color(0.8, 0.72, 0.62),
+	RegionData.Modifier.NEBULA: Color(0.5, 0.65, 1.0),
+}
 
 var sector: SectorData
 var claiming_id := -1
 var alarm := 0.0
 var map_mode := false
 var zoom := 1.0
+## Claims still needed before the heart can be kindled (0 = unsealed).
+var heart_claims_needed := 0
 
 var _time := 0.0
 var _font: Font
@@ -79,11 +89,26 @@ func _draw_markers(pixel: float) -> void:
 				var ring_color := BEACON_COLOR
 				ring_color.a = 0.5
 				draw_arc(region.beacon, size * 2.2, 0.0, TAU, 40, ring_color, 1.5 * pixel)
+		elif region.is_heart:
+			_draw_heart_marker(region, marker_scale, pixel)
 		elif sector.is_frontier(region.id) and region.id != claiming_id:
 			var pulse := 0.5 + 0.5 * sin(_time * 3.0 + region.id)
 			var color := MARKER_COLOR
 			color.a = 0.35 + 0.4 * pulse
-			_draw_diamond(region.centroid, (9.0 + 3.0 * pulse) * marker_scale, color, false, 2.0 * pixel)
+			_draw_diamond(region.anchor, (9.0 + 3.0 * pulse) * marker_scale, color, false, 2.0 * pixel)
+
+
+## A slow crimson heartbeat, ringed by a dashed seal until it can be kindled.
+func _draw_heart_marker(region: RegionData, marker_scale: float, pixel: float) -> void:
+	var beat := pow(maxf(sin(_time * 3.2), 0.0), 6.0)
+	var size := (13.0 + 5.0 * beat) * marker_scale
+	_draw_diamond(region.anchor, size, HEART_COLOR, true)
+	if heart_claims_needed > 0:
+		var seal := HEART_COLOR
+		seal.a = 0.6
+		for i in 12:
+			var start := TAU * i / 12.0 + _time * 0.3
+			draw_arc(region.anchor, size * 2.4, start, start + TAU / 24.0, 6, seal, 2.0 * pixel)
 
 
 func _draw_labels(pixel: float) -> void:
@@ -92,25 +117,36 @@ func _draw_labels(pixel: float) -> void:
 	var width := 420.0 * pixel
 	for region in sector.regions:
 		var color := LABEL_COLOR
+		var title := region.name.to_upper()
 		var detail := "%ds" % roundi(region.claim_seconds)
 		if region.claimed:
 			color = MARKER_COLOR
 			detail = "HOME" if region.id == sector.home_id else "YOURS"
+		elif region.is_heart:
+			color = HEART_LABEL_COLOR
+			title = "THE HEART"
+			if heart_claims_needed > 0:
+				detail = "SEALED  ·  claim %d more" % heart_claims_needed
+			elif sector.is_frontier(region.id):
+				detail = "%ds  ·  CAN KINDLE" % roundi(region.claim_seconds)
 		elif sector.is_frontier(region.id):
 			color = MARKER_COLOR
 			detail = "%ds  ·  CAN KINDLE" % roundi(region.claim_seconds)
 		else:
 			color.a = 0.55
-		var top_left := region.centroid + Vector2(-width * 0.5, -6.0 * pixel)
-		draw_string(_font, top_left, region.name.to_upper(), HORIZONTAL_ALIGNMENT_CENTER, width, title_size, color)
+		var top_left := region.anchor + Vector2(-width * 0.5, -6.0 * pixel)
+		draw_string(_font, top_left, title, HORIZONTAL_ALIGNMENT_CENTER, width, title_size, color)
 		draw_string(_font, top_left + Vector2(0.0, 18.0 * pixel), detail, HORIZONTAL_ALIGNMENT_CENTER, width, detail_size, color)
+		if region.modifier != RegionData.Modifier.NONE and not region.claimed:
+			var modifier_color: Color = MODIFIER_COLORS[region.modifier]
+			draw_string(_font, top_left + Vector2(0.0, -17.0 * pixel), region.modifier_name(), HORIZONTAL_ALIGNMENT_CENTER, width, detail_size, modifier_color)
 		if not region.claimed:
 			var pips := mini(region.depth, 5)
 			var threat_color := THREAT_COLOR
 			threat_color.a = color.a
 			for i in pips:
 				var offset := (i - (pips - 1) * 0.5) * 9.0 * pixel
-				draw_circle(region.centroid + Vector2(offset, 30.0 * pixel), 2.5 * pixel, threat_color)
+				draw_circle(region.anchor + Vector2(offset, 30.0 * pixel), 2.5 * pixel, threat_color)
 
 
 func _draw_diamond(center: Vector2, size: float, color: Color, filled: bool, width := 2.0) -> void:

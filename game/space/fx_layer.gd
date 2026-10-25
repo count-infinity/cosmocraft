@@ -13,6 +13,7 @@ var _max_life := PackedFloat32Array()
 var _widths := PackedFloat32Array()
 var _colors := PackedColorArray()
 var _rings: Array[Dictionary] = []
+var _zaps: Array[Dictionary] = []
 
 
 func _ready() -> void:
@@ -40,6 +41,11 @@ func ring(origin: Vector2, color: Color, max_radius: float, life: float, width: 
 	_rings.append({"origin": origin, "color": color, "max_radius": max_radius, "life": life, "max_life": life, "width": width})
 
 
+## A brief straight bolt between two points (point defense hits).
+func zap(from: Vector2, to: Vector2, color: Color) -> void:
+	_zaps.append({"from": from, "to": to, "color": color, "life": 0.12})
+
+
 func update(delta: float) -> void:
 	var drag := exp(-DRAG * delta)
 	var i := 0
@@ -57,6 +63,12 @@ func update(delta: float) -> void:
 		if float(ring_data["life"]) > 0.0:
 			rings.append(ring_data)
 	_rings = rings
+	var zaps: Array[Dictionary] = []
+	for zap_data in _zaps:
+		zap_data["life"] = float(zap_data["life"]) - delta
+		if float(zap_data["life"]) > 0.0:
+			zaps.append(zap_data)
+	_zaps = zaps
 	queue_redraw()
 
 
@@ -91,3 +103,7 @@ func _draw() -> void:
 		var color: Color = ring_data["color"]
 		color.a *= 1.0 - t
 		draw_arc(ring_data["origin"], radius, 0.0, TAU, 64, color, float(ring_data["width"]) * (1.0 - t * 0.5))
+	for zap_data in _zaps:
+		var zap_color: Color = zap_data["color"]
+		zap_color.a = float(zap_data["life"]) / 0.12
+		draw_line(zap_data["from"], zap_data["to"], zap_color, 2.0)

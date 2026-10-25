@@ -34,10 +34,25 @@ func _ready() -> void:
 	_streams["snuff"] = _tone(0.5, "saw", 520.0, 90.0, 0.45, 0.005, 1.2)
 	_streams["elite"] = _tone(1.0, "saw", 75.0, 50.0, 0.6, 0.05, 1.0)
 	_streams["kindle"] = _chord(0.7, [220.0, 330.0, 440.0], 0.45, 0.06, 1.4)
+	_streams["lance"] = _tone(0.25, "saw", 320.0, 140.0, 0.45, 0.003, 1.3)
+	_streams["missile"] = _noise(0.25, 0.3, 0.1, 0.4, 0.02, 1.2)
+	_streams["flak"] = _noise(0.12, 0.4, 0.4, 0.1, 0.002, 1.6)
+	_streams["torpedo"] = _tone(0.4, "saw", 140.0, 60.0, 0.55, 0.01, 1.2)
+	_streams["scatter"] = _noise(0.14, 0.45, 0.7, 0.15, 0.001, 1.8)
+	_streams["ting"] = _tone(0.12, "sine", 2400.0, 1800.0, 0.2, 0.001, 1.6)
+	_streams["zap"] = _tone(0.08, "square", 1800.0, 900.0, 0.18, 0.001, 1.4)
 	_streams["ignite"] = _chord(1.8, [196.0, 293.7, 392.0, 587.3], 0.6, 0.12, 1.2)
+	_streams["clink"] = _tone(0.09, "sine", 1700.0, 1250.0, 0.22, 0.001, 1.6)
+	_streams["shatter"] = _noise(0.35, 0.5, 0.95, 0.2, 0.001, 1.4)
+	_streams["chime"] = _tone(0.12, "sine", 880.0, 1320.0, 0.22, 0.002, 1.2)
+	_streams["cache"] = _chord(0.6, [330.0, 440.0, 660.0], 0.35, 0.02, 1.4)
+	_streams["plant"] = _chord(0.9, [146.8, 220.0, 293.7], 0.5, 0.03, 1.3)
+	_streams["liftoff"] = _noise(1.4, 0.55, 0.05, 0.5, 0.25, 1.0)
+	_streams["burn"] = _noise(0.25, 0.3, 0.2, 0.05, 0.01, 1.4)
 
 
-func play(sound: String, volume_db := 0.0) -> void:
+## `pitch` above zero sets the pitch exactly; otherwise it varies slightly.
+func play(sound: String, volume_db := 0.0, pitch := 0.0) -> void:
 	if muted or not _streams.has(sound):
 		return
 	var now := Time.get_ticks_msec()
@@ -48,7 +63,7 @@ func play(sound: String, volume_db := 0.0) -> void:
 	_next_voice = (_next_voice + 1) % VOICES
 	player.stream = _streams[sound]
 	player.volume_db = volume_db
-	player.pitch_scale = randf_range(0.94, 1.06)
+	player.pitch_scale = pitch if pitch > 0.0 else randf_range(0.94, 1.06)
 	player.play()
 
 

@@ -50,7 +50,7 @@ func test_elite_arrives_once_at_the_threshold() -> void:
 			elites += 1
 	assert_eq(elites, 1, "One elite at the threshold")
 	for spawn in _run(director, 10.0, 0.95):
-		assert_false(spawn["elite"], "The elite only arrives once")
+		assert_false(spawn.get("climax", false), "The climax Snuffer only arrives once")
 
 
 func test_respects_max_alive() -> void:
@@ -76,3 +76,51 @@ func test_same_seed_same_waves() -> void:
 	var a := _run(WaveDirector.new(tuning, 1.0, 8), 30.0, 0.5)
 	var b := _run(WaveDirector.new(tuning, 1.0, 8), 30.0, 0.5)
 	assert_eq(a, b, "Deterministic for a given seed")
+
+
+func _kinds(spawns: Array[Dictionary]) -> Dictionary:
+	var kinds := {}
+	for spawn in spawns:
+		kinds[spawn["kind"]] = true
+	return kinds
+
+
+func test_the_first_ring_only_sends_mites_and_darts() -> void:
+	var kinds := _kinds(_run(WaveDirector.new(tuning, 1.0, 9, 1), 180.0, 0.8))
+	for kind: String in kinds:
+		assert_true(kind == "mite" or kind == "dart", "Depth 1 sent %s" % kind)
+	assert_eq(WaveDirector.kinds_at(1), ["mite", "dart"] as Array[String], "The first ring's roster")
+
+
+func test_tougher_gloom_waits_for_deeper_regions() -> void:
+	var middle := _kinds(_run(WaveDirector.new(tuning, 1.5, 10, 2), 240.0, 0.8))
+	assert_false(middle.has("carapace") or middle.has("lancer"), "No carapaces or lancers a step from home")
+	assert_true(WaveDirector.kinds_at(3).has("carapace"), "Carapaces further out")
+	assert_eq(WaveDirector.kinds_new_at(3, 2), ["carapace", "lancer"] as Array[String], "What's new at depth 3")
+	assert_eq(WaveDirector.kinds_new_at(2, 2), [] as Array[String], "Nothing new at a depth you've already held")
+
+
+func test_the_climax_snuffer_is_plain_near_home_and_elite_further_out() -> void:
+	for depth in [1, 3]:
+		var director := WaveDirector.new(tuning, 1.0, 11, depth)
+		director.update(0.1, 0.5, 0, 0)
+		var climax: Dictionary = {}
+		for spawn in director.update(0.1, tuning.elite_threshold, 0, 0):
+			if spawn.get("climax", false):
+				climax = spawn
+		assert_eq(String(climax.get("kind", "")), "snuffer", "Depth %d climax is a Snuffer" % depth)
+		assert_eq(bool(climax.get("elite", false)), depth >= WaveDirector.ELITE_DEPTH, "Elite only from depth %d" % WaveDirector.ELITE_DEPTH)
+
+
+func test_the_deepest_regions_send_some_elites() -> void:
+	var elites := 0
+	for spawn in _run(WaveDirector.new(tuning, 2.0, 12, 4), 300.0, 0.8):
+		if spawn["elite"] and not spawn.get("climax", false):
+			elites += 1
+	assert_gt(elites, 0, "Elites mixed into regular waves at depth 4")
+
+
+func test_threat_and_health_grow_with_depth() -> void:
+	assert_lt(tuning.threat_for(1), tuning.threat_for(3), "More pressure further out")
+	assert_lt(tuning.health_scale(1), 1.0, "Weaker Gloom next to home")
+	assert_gt(tuning.health_scale(4), 1.0, "Tougher Gloom deep in the dark")

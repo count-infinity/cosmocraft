@@ -22,6 +22,10 @@ func is_firing() -> bool:
 	return Input.is_action_pressed("fire")
 
 
+func consume_secondary() -> bool:
+	return Input.is_action_just_pressed("fire_secondary")
+
+
 func consume_dash() -> bool:
 	return Input.is_action_just_pressed("dash")
 

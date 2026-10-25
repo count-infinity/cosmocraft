@@ -10,9 +10,12 @@ const MAX_LOOK_AHEAD := 240.0
 const MAX_SHAKE := 26.0
 
 var target: Node2D
+var play_zoom := PLAY_ZOOM
 var map_mode := false
 var map_zoom := 0.12
 var look_ahead_enabled := true
+## How quickly the camera catches up with its target (higher is tighter).
+var follow_speed := 9.0
 
 var _trauma := 0.0
 var _punch := 0.0
@@ -38,9 +41,15 @@ func snap_to(point: Vector2) -> void:
 	global_position = point
 
 
+## Jumps straight to play_zoom (when a mode starts).
+func snap_zoom() -> void:
+	_zoom_level = play_zoom
+	zoom = Vector2.ONE * play_zoom
+
+
 func _process(delta: float) -> void:
 	_time += delta
-	var wanted_zoom := map_zoom if map_mode else PLAY_ZOOM
+	var wanted_zoom := map_zoom if map_mode else play_zoom
 	_zoom_level = lerpf(_zoom_level, wanted_zoom, 1.0 - exp(-7.0 * delta))
 	_punch = lerpf(_punch, 0.0, 1.0 - exp(-9.0 * delta))
 	zoom = Vector2.ONE * _zoom_level * (1.0 + _punch)
@@ -51,7 +60,7 @@ func _process(delta: float) -> void:
 		if look_ahead_enabled:
 			var from_center := get_viewport().get_mouse_position() - get_viewport_rect().size * 0.5
 			focus += (from_center / _zoom_level * LOOK_AHEAD).limit_length(MAX_LOOK_AHEAD)
-	var follow := 4.0 if map_mode else 9.0
+	var follow := 4.0 if map_mode else follow_speed
 	global_position = global_position.lerp(focus, 1.0 - exp(-follow * delta))
 
 	_trauma = maxf(_trauma - delta * 1.5, 0.0)

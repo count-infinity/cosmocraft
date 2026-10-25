@@ -1,6 +1,6 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://game/space/space_game.gd" id="1_space"]
+[ext_resource type="Script" path="res://game/game_flow.gd" id="1_flow"]
 
-[node name="SpaceGame" type="Node2D"]
-script = ExtResource("1_space")
+[node name="GameFlow" type="Node"]
+script = ExtResource("1_flow")
